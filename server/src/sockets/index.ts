@@ -116,7 +116,7 @@ export function setupSocketHandlers(io: Server): void {
       if (!gamingId) return;
       const race = raceService.updatePosition(gamingId, data);
       if (race) {
-        socket.to(gamingId).emit(SocketEvents.POSITION_SYNC, {
+        io.to(gamingId).emit(SocketEvents.POSITION_SYNC, {
           players: race.players.map((p) => ({
             playerId: p.playerId,
             position: p.position,
@@ -142,13 +142,17 @@ export function setupSocketHandlers(io: Server): void {
       if (!gamingId) return;
       const race = raceService.handleCollision(gamingId, data);
       if (race) {
-        const player = race.players.find((p) => p.playerId === data.playerId);
-        if (player) {
-          io.to(gamingId).emit(SocketEvents.HEALTH_UPDATE, {
-            playerId: data.playerId,
-            health: player.health,
-            isRespawning: player.isRespawning,
-          });
+        const affectedIds = new Set([data.playerId]);
+        if (data.targetPlayerId) affectedIds.add(data.targetPlayerId);
+        for (const id of affectedIds) {
+          const player = race.players.find((p) => p.playerId === id);
+          if (player) {
+            io.to(gamingId).emit(SocketEvents.HEALTH_UPDATE, {
+              playerId: id,
+              health: player.health,
+              isRespawning: player.isRespawning,
+            });
+          }
         }
       }
     });
@@ -285,6 +289,15 @@ function startRace(io: Server, gamingId: string, lobby: Lobby): void {
   const race = raceService.createRace(currentLobby);
 
   io.to(gamingId).emit(SocketEvents.RACE_START, { race });
+  io.to(gamingId).emit(SocketEvents.POSITION_SYNC, {
+    players: race.players.map((p) => ({
+      playerId: p.playerId,
+      position: p.position,
+      rotation: p.rotation,
+      velocity: p.velocity,
+      rank: p.rank,
+    })),
+  });
   io.to(gamingId).emit(SocketEvents.WEATHER_SYNC, {
     weather: race.weather,
     timeOfDay: race.timeOfDay,

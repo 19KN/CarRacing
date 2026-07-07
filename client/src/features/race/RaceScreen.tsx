@@ -32,10 +32,11 @@ export function RaceHUD() {
 
   const mapId = race?.mapId || lobby?.settings.mapId || DEFAULT_MAP_ID;
   const map = getMapById(mapId);
-  const myPlayer = lobby?.players.find((p) => p.id === profile.id);
-  const vehicleId = myPlayer?.vehicleId || profile.favoriteVehicle;
-  const vehicleColor = myPlayer?.vehicleColor || '#FF9933';
-  const isSolo = !lobby;
+  const myRacePlayer = race?.players.find((p) => p.playerId === profile.id);
+  const myLobbyPlayer = lobby?.players.find((p) => p.id === profile.id);
+  const vehicleId = myRacePlayer?.vehicleId || myLobbyPlayer?.vehicleId || profile.favoriteVehicle;
+  const vehicleColor = myRacePlayer?.vehicleColor || myLobbyPlayer?.vehicleColor || '#FF9933';
+  const isSolo = !race || race.players.length < 2;
   const [elapsedMs, setElapsedMs] = useState(0);
 
   const handleCelebrationComplete = useCallback(() => {

@@ -154,13 +154,29 @@ export const useRaceStore = create<RaceStateStore>((set, get) => ({
   weather: 'clear',
   timeOfDay: 'morning',
   remotePlayers: {},
-  setRace: (race) => set({
-    race,
-    health: 100,
-    isRaceFinished: false,
-    finishTimeMs: null,
-    maxRaceSpeed: 0,
-  }),
+  setRace: (race) => {
+    const myId = useAuthStore.getState().profile.id;
+    const remotePlayers: RaceStateStore['remotePlayers'] = {};
+    if (race) {
+      for (const p of race.players) {
+        if (p.playerId !== myId) {
+          remotePlayers[p.playerId] = {
+            position: { ...p.position },
+            rotation: p.rotation,
+            velocity: { ...p.velocity },
+          };
+        }
+      }
+    }
+    set({
+      race,
+      health: 100,
+      isRaceFinished: false,
+      finishTimeMs: null,
+      maxRaceSpeed: 0,
+      remotePlayers,
+    });
+  },
   setResults: (results) => set({ results }),
   setRankings: (rankings) => set({ rankings }),
   setCountdown: (countdown) => set({ countdown }),

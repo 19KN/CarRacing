@@ -184,6 +184,7 @@ export interface CollisionPayload {
   playerId: string;
   severity: CollisionSeverity;
   position: Vector3;
+  targetPlayerId?: string;
 }
 
 export interface LeaderboardEntry {

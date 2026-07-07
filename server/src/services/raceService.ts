@@ -83,26 +83,47 @@ export class RaceService {
     const damage = HEALTH_DAMAGE[payload.severity] || 4;
     player.health = Math.max(0, player.health - damage);
 
-    if (player.health <= 0) {
-      player.isRespawning = true;
-      setTimeout(() => {
-        const r = store.getRace(gamingId);
-        if (!r) return;
-        const p = r.players.find((pl) => pl.playerId === payload.playerId);
-        if (p) {
-          p.health = 50;
-          p.isRespawning = false;
-          const map = getMapById(r.mapId);
-          if (map && map.checkpoints[p.checkpointIndex]) {
-            p.position = { ...map.checkpoints[p.checkpointIndex], y: 0.5 };
-          }
-          store.setRace(gamingId, r);
+    if (payload.targetPlayerId) {
+      const target = race.players.find((p) => p.playerId === payload.targetPlayerId);
+      if (target && !target.isRespawning) {
+        target.health = Math.max(0, target.health - damage);
+        if (target.health <= 0) {
+          this.startRespawn(gamingId, target.playerId);
         }
-      }, config.respawnDelay);
+      }
+    }
+
+    if (player.health <= 0) {
+      this.startRespawn(gamingId, payload.playerId);
     }
 
     store.setRace(gamingId, race);
     return race;
+  }
+
+  private startRespawn(gamingId: string, playerId: string): void {
+    const race = store.getRace(gamingId);
+    if (!race) return;
+    const player = race.players.find((p) => p.playerId === playerId);
+    if (!player) return;
+
+    player.isRespawning = true;
+    store.setRace(gamingId, race);
+
+    setTimeout(() => {
+      const r = store.getRace(gamingId);
+      if (!r) return;
+      const p = r.players.find((pl) => pl.playerId === playerId);
+      if (p) {
+        p.health = 50;
+        p.isRespawning = false;
+        const map = getMapById(r.mapId);
+        if (map && map.checkpoints[p.checkpointIndex]) {
+          p.position = { ...map.checkpoints[p.checkpointIndex], y: 0.5 };
+        }
+        store.setRace(gamingId, r);
+      }
+    }, config.respawnDelay);
   }
 
   handleCheckpoint(gamingId: string, playerId: string, checkpointIndex: number): RaceState | null {

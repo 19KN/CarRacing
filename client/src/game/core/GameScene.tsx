@@ -10,6 +10,7 @@ import { PLAYER_LANE_X } from '../maps/IndianHighwayRoad';
 import { WeatherSystem } from '../weather/WeatherSystem';
 import { TrafficSystem, trafficRegistry } from '../traffic/TrafficSystem';
 import { findTrafficCollision, getCollisionDamage } from '../traffic/trafficCollision';
+import { findPlayerCollision } from '../network/playerCollision';
 import { SmokeParticles } from '../effects/Effects';
 import { triggerCollisionFeedback } from '../effects/collisionFeedback';
 import { useCameraController, useCameraSwitcher } from '../camera/CameraController';
@@ -49,6 +50,7 @@ function PlayerVehicle({
   const speedReportTimer = useRef(0);
   const collisionCooldown = useRef(0);
   const trafficHitTimes = useRef(new Map<string, number>());
+  const playerHitTimes = useRef(new Map<string, number>());
   const raceStartZ = useRef(20);
   const lastDistanceReport = useRef(-1);
   const finishedRef = useRef(false);
@@ -173,6 +175,30 @@ function PlayerVehicle({
             });
           }
         }
+      } else if (!isSolo) {
+        const remotePlayers = useRaceStore.getState().remotePlayers;
+        const hitPlayerId = findPlayerCollision(state.position.x, state.position.z, remotePlayers);
+        if (hitPlayerId) {
+          const now = Date.now();
+          const lastHit = playerHitTimes.current.get(hitPlayerId) ?? 0;
+          if (now - lastHit > 1200) {
+            playerHitTimes.current.set(hitPlayerId, now);
+            collisionCooldown.current = 0.5;
+            const { severity, damage } = getCollisionDamage(state.speed);
+            const newHealth = Math.max(0, health - damage);
+            useRaceStore.getState().setHealth(newHealth);
+            physics.current.applyTrafficCollision(severity, remotePlayers[hitPlayerId].position.x);
+            playCollisionImpact(severity, state.speed);
+            triggerCollisionFeedback(severity, state.speed);
+
+            getSocket().emit(SocketEvents.COLLISION, {
+              playerId: useAuthStore.getState().profile.id,
+              targetPlayerId: hitPlayerId,
+              severity,
+              position: { ...state.position },
+            });
+          }
+        }
       }
     }
 
@@ -217,8 +243,19 @@ function GameWorld({
   const weather = useRaceStore((s) => s.weather) as 'clear' | 'rain' | 'fog' | 'thunder' | 'wind';
   const timeOfDay = useRaceStore((s) => s.timeOfDay) as 'morning' | 'afternoon' | 'evening' | 'night' | 'sunrise' | 'sunset';
   const lobby = useLobbyStore((s) => s.lobby);
+  const race = useRaceStore((s) => s.race);
   const playerId = useAuthStore((s) => s.profile.id);
   const [signalState, setSignalState] = useState<'red' | 'yellow' | 'green'>('green');
+  const isMultiplayer = (race?.players.length ?? 0) >= 2;
+  const otherPlayers = race?.players.filter((p) => p.playerId !== playerId)
+    ?? lobby?.players.filter((p) => p.id !== playerId).map((p) => ({
+      playerId: p.id,
+      vehicleId: p.vehicleId,
+      vehicleColor: p.vehicleColor,
+      position: { x: 0, y: 0.5, z: 5 },
+      rotation: Math.PI,
+    }))
+    ?? [];
 
   useEffect(() => {
     const socket = getSocket();
@@ -239,11 +276,16 @@ function GameWorld({
         mapId={mapId}
         isSolo={isSolo}
       />
-      {!isSolo && lobby?.players
-        .filter((p) => p.id !== playerId)
-        .map((p) => (
-          <RemotePlayer key={p.id} playerId={p.id} vehicleColor={p.vehicleColor} />
-        ))}
+      {!isSolo && isMultiplayer && otherPlayers.map((p) => (
+        <RemotePlayer
+          key={p.playerId}
+          playerId={p.playerId}
+          vehicleId={p.vehicleId}
+          vehicleColor={p.vehicleColor}
+          initialPosition={p.position}
+          initialRotation={p.rotation}
+        />
+      ))}
     </>
   );
 }
