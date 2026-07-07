@@ -37,6 +37,9 @@ export function createVehiclePhysics(config: VehicleConfig) {
     isDrifting: false,
   };
   let steeringAngle = 0;
+  let roadSurfaceY = 0.5;
+  let bumpOffset = 0;
+  let bumpVelocity = 0;
 
   const cappedMaxKmh = Math.min(stats.maxSpeed, GAME_MAX_SPEED_KMH);
   const maxSpeedMs = cappedMaxKmh / 3.6;
@@ -47,8 +50,9 @@ export function createVehiclePhysics(config: VehicleConfig) {
   const rollingResistance = 0.998;
   const dragCoeff = 0.00012 * (stats.weight / 1000);
 
-  function update(input: VehicleInput, delta: number, health: number): VehiclePhysicsState {
+  function update(input: VehicleInput, delta: number, health: number, surfaceY = 0.5, roadCenterX = 0): VehiclePhysicsState {
     const dt = Math.min(delta, 0.05);
+    roadSurfaceY = surfaceY;
     const healthMultiplier = health > 50 ? 1 : health > 20 ? 0.6 : health > 0 ? 0.25 : 0;
     const effectiveMaxSpeed = maxSpeedMs * healthMultiplier;
     const effectiveAccel = accelForce * healthMultiplier * massFactor;
@@ -109,13 +113,20 @@ export function createVehiclePhysics(config: VehicleConfig) {
 
     state.position.x += state.velocity.x * dt;
     state.position.z += state.velocity.z * dt;
-    state.position.y = 0.5;
 
-    if (state.position.x < DRIVABLE_MIN_X) {
-      state.position.x = DRIVABLE_MIN_X;
+    bumpVelocity -= 32 * bumpOffset * dt;
+    bumpVelocity *= Math.max(0, 1 - 3.5 * dt);
+    bumpOffset += bumpVelocity * dt;
+    bumpOffset = Math.max(0, bumpOffset);
+    state.position.y = roadSurfaceY + bumpOffset;
+
+    const minX = roadCenterX + DRIVABLE_MIN_X;
+    const maxX = roadCenterX + DRIVABLE_MAX_X;
+    if (state.position.x < minX) {
+      state.position.x = minX;
       state.velocity.x = Math.max(0, state.velocity.x);
-    } else if (state.position.x > DRIVABLE_MAX_X) {
-      state.position.x = DRIVABLE_MAX_X;
+    } else if (state.position.x > maxX) {
+      state.position.x = maxX;
       state.velocity.x = Math.min(0, state.velocity.x);
     }
 
@@ -126,9 +137,11 @@ export function createVehiclePhysics(config: VehicleConfig) {
     return { ...state };
   }
 
-  function setPosition(x: number, y: number, z: number, rot: number) {
+  function setPosition(x: number, y: number, z: number, rot: number, roadCenterX = 0) {
+    const minX = roadCenterX + DRIVABLE_MIN_X;
+    const maxX = roadCenterX + DRIVABLE_MAX_X;
     state.position = {
-      x: Math.min(DRIVABLE_MAX_X, Math.max(DRIVABLE_MIN_X, x)),
+      x: Math.min(maxX, Math.max(minX, x)),
       y,
       z,
     };
@@ -166,6 +179,14 @@ export function createVehiclePhysics(config: VehicleConfig) {
     steeringAngle *= 0.4;
   }
 
+  function applySpeedBump(speedKmh: number) {
+    if (speedKmh < 12) return;
+    const intensity = Math.min(0.55, 0.12 + (speedKmh / 300) * 0.45);
+    bumpVelocity = Math.max(bumpVelocity, intensity * 16);
+    bumpOffset = Math.max(bumpOffset, intensity);
+    state.position.y = roadSurfaceY + bumpOffset;
+  }
+
   function stopVehicle() {
     state.velocity = { x: 0, y: 0, z: 0 };
     steeringAngle = 0;
@@ -173,7 +194,7 @@ export function createVehiclePhysics(config: VehicleConfig) {
 
   function getState() { return { ...state }; }
 
-  return { update, setPosition, getState, applyTrafficCollision, stopVehicle };
+  return { update, setPosition, getState, applyTrafficCollision, applySpeedBump, stopVehicle };
 }
 
 export type VehiclePhysics = ReturnType<typeof createVehiclePhysics>;

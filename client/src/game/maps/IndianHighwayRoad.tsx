@@ -1,5 +1,8 @@
 import { useMemo } from 'react';
 import * as THREE from 'three';
+import { buildRoadCenterline, buildArcLengthTable, sampleRoadAtDistance } from './roadPath';
+import { generateSpeedBreakers } from './speedBreakers';
+import { getTrackCentroid } from '@indian-racing/shared';
 
 const LANE_W = 3.5;
 const LANES = 2;
@@ -30,11 +33,28 @@ export const TRAFFIC_LANE_OFFSETS = [
   MEDIAN_W / 2 + LANE_W * 1.5,
 ];
 
-const SEG_LEN = 40;
+const SEG_LEN = 28;
+const SEG_OVERLAP = 1.2;
 
-function getRoadLengthFromPoints(points: { z: number }[]): number {
-  const lastZ = points[points.length - 1]?.z ?? -4000;
-  return Math.abs(lastZ) + 600;
+function SpeedBreakerMesh() {
+  return (
+    <group>
+      <mesh position={[0, 0.1, 0]} castShadow receiveShadow>
+        <boxGeometry args={[6.5, 0.12, 3.2]} />
+        <meshStandardMaterial color="#d4c060" roughness={0.85} />
+      </mesh>
+      <mesh position={[0, 0.17, 0]}>
+        <boxGeometry args={[6.2, 0.06, 2.8]} />
+        <meshStandardMaterial color="#e8d878" roughness={0.8} />
+      </mesh>
+      {[-2.8, -1.4, 0, 1.4, 2.8].map((x) => (
+        <mesh key={x} position={[x, 0.14, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+          <planeGeometry args={[0.5, 2.6]} />
+          <meshStandardMaterial color="#333" />
+        </mesh>
+      ))}
+    </group>
+  );
 }
 
 function seededRandom(seed: number): number {
@@ -162,48 +182,57 @@ export function IndianHighwayRoad({ points }: { points: { x: number; y: number; 
   const sidewalkTex = useMemo(() => tex('#b0b0b0', true), []);
   const dirtTex = useMemo(() => tex('#9a8b6a', true), []);
 
-  const roadLength = useMemo(() => getRoadLengthFromPoints(points), [points]);
+  const centerline = useMemo(() => buildRoadCenterline(points), [points]);
+  const arcTable = useMemo(() => buildArcLengthTable(centerline), [centerline]);
+  const roadLength = useMemo(() => arcTable.total, [arcTable]);
   const segCount = Math.ceil(roadLength / SEG_LEN);
   const totalRoadHalf = CARRIAGE_W + MEDIAN_W / 2 + SHOULDER_W;
+  const grassCenter = useMemo(() => getTrackCentroid(points), [points]);
+
+  useMemo(() => {
+    generateSpeedBreakers(points, roadLength, arcTable, centerline);
+  }, [points, roadLength, arcTable, centerline]);
 
   return (
     <group>
       {/* Grass base - below road */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.15, -roadLength / 2]} receiveShadow>
-        <planeGeometry args={[120, roadLength + 200]} />
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[grassCenter.x, -0.15, grassCenter.z - roadLength * 0.35]} receiveShadow>
+        <planeGeometry args={[500, roadLength + 500]} />
         <meshStandardMaterial map={grassTex} color="#3d6b35" roughness={1} side={THREE.DoubleSide} />
       </mesh>
 
       {Array.from({ length: segCount }).map((_, i) => {
-        const z = 50 - i * SEG_LEN;
+        const dist = Math.min(roadLength - SEG_LEN * 0.5, i * SEG_LEN + SEG_LEN * 0.5);
         const seed = i * 7 + 3;
+        const path = sampleRoadAtDistance(centerline, arcTable, dist);
+        const segDepth = SEG_LEN + SEG_OVERLAP;
 
         return (
-          <group key={i} position={[0, 0, z]}>
+          <group key={i} position={[path.x, path.y, path.z]} rotation={[0, path.rotation, 0]}>
             {/* ── LEFT CARRIAGEWAY (player direction) ── */}
             <mesh position={[-(MEDIAN_W / 2 + CARRIAGE_W / 2), 0.05, 0]} receiveShadow>
-              <boxGeometry args={[CARRIAGE_W, 0.1, SEG_LEN]} />
+              <boxGeometry args={[CARRIAGE_W, 0.1, segDepth]} />
               <meshStandardMaterial map={asphaltTex} color="#333" roughness={0.9} side={THREE.DoubleSide} />
             </mesh>
 
             {/* ── MEDIAN CEMENT DIVIDER (raised curbs, drivable center gap) ── */}
             <mesh position={[-(MEDIAN_W / 2 - 0.18), 0.22, 0]} castShadow receiveShadow>
-              <boxGeometry args={[0.36, 0.4, SEG_LEN]} />
+              <boxGeometry args={[0.36, 0.4, segDepth]} />
               <meshStandardMaterial map={sidewalkTex} color="#8a8a8a" roughness={0.92} />
             </mesh>
             <mesh position={[MEDIAN_W / 2 - 0.18, 0.22, 0]} castShadow receiveShadow>
-              <boxGeometry args={[0.36, 0.4, SEG_LEN]} />
+              <boxGeometry args={[0.36, 0.4, segDepth]} />
               <meshStandardMaterial map={sidewalkTex} color="#8a8a8a" roughness={0.92} />
             </mesh>
             <mesh position={[0, 0.07, 0]} receiveShadow>
-              <boxGeometry args={[MEDIAN_W - 0.72, 0.1, SEG_LEN]} />
+              <boxGeometry args={[MEDIAN_W - 0.72, 0.1, segDepth]} />
               <meshStandardMaterial map={sidewalkTex} color="#6e6e6e" roughness={0.88} side={THREE.DoubleSide} />
             </mesh>
             {/* Median center dashes */}
-            {Array.from({ length: Math.floor(SEG_LEN / 8) }).map((_, d) => (
+            {Array.from({ length: Math.floor(segDepth / 8) }).map((_, d) => (
               <mesh
                 key={`median-dash-${d}`}
-                position={[0, 0.11, -SEG_LEN / 2 + d * 8 + 2]}
+                position={[0, 0.11, -segDepth / 2 + d * 8 + 2]}
                 rotation={[-Math.PI / 2, 0, 0]}
               >
                 <planeGeometry args={[0.12, 3]} />
@@ -213,40 +242,40 @@ export function IndianHighwayRoad({ points }: { points: { x: number; y: number; 
 
             {/* ── RIGHT CARRIAGEWAY (oncoming) ── */}
             <mesh position={[MEDIAN_W / 2 + CARRIAGE_W / 2, 0.05, 0]} receiveShadow>
-              <boxGeometry args={[CARRIAGE_W, 0.1, SEG_LEN]} />
+              <boxGeometry args={[CARRIAGE_W, 0.1, segDepth]} />
               <meshStandardMaterial map={asphaltTex} color="#333" roughness={0.9} side={THREE.DoubleSide} />
             </mesh>
 
             {/* ── SHOULDERS (dirt) ── */}
             <mesh position={[-(totalRoadHalf + SHOULDER_W / 2), 0.03, 0]} receiveShadow>
-              <boxGeometry args={[SHOULDER_W, 0.06, SEG_LEN]} />
+              <boxGeometry args={[SHOULDER_W, 0.06, segDepth]} />
               <meshStandardMaterial map={dirtTex} color="#8a7a5a" roughness={1} side={THREE.DoubleSide} />
             </mesh>
             <mesh position={[totalRoadHalf + SHOULDER_W / 2, 0.03, 0]} receiveShadow>
-              <boxGeometry args={[SHOULDER_W, 0.06, SEG_LEN]} />
+              <boxGeometry args={[SHOULDER_W, 0.06, segDepth]} />
               <meshStandardMaterial map={dirtTex} color="#8a7a5a" roughness={1} side={THREE.DoubleSide} />
             </mesh>
 
             {/* ── SIDEWALKS ── */}
             <mesh position={[-(totalRoadHalf + SHOULDER_W + SIDEWALK_W / 2), 0.12, 0]} receiveShadow>
-              <boxGeometry args={[SIDEWALK_W, 0.15, SEG_LEN]} />
+              <boxGeometry args={[SIDEWALK_W, 0.15, segDepth]} />
               <meshStandardMaterial map={sidewalkTex} color="#aaa" roughness={0.7} side={THREE.DoubleSide} />
             </mesh>
             <mesh position={[totalRoadHalf + SHOULDER_W + SIDEWALK_W / 2, 0.12, 0]} receiveShadow>
-              <boxGeometry args={[SIDEWALK_W, 0.15, SEG_LEN]} />
+              <boxGeometry args={[SIDEWALK_W, 0.15, segDepth]} />
               <meshStandardMaterial map={sidewalkTex} color="#aaa" roughness={0.7} side={THREE.DoubleSide} />
             </mesh>
 
             {/* ── LANE MARKINGS (dashed white) ── */}
-            {Array.from({ length: Math.floor(SEG_LEN / 8) }).map((_, d) => (
+            {Array.from({ length: Math.floor(segDepth / 8) }).map((_, d) => (
               <group key={`dash-${d}`}>
                 {/* Left carriageway center dash */}
-                <mesh position={[-(MEDIAN_W / 2 + CARRIAGE_W / 2), 0.11, -SEG_LEN / 2 + d * 8 + 2]} rotation={[-Math.PI / 2, 0, 0]}>
+                <mesh position={[-(MEDIAN_W / 2 + CARRIAGE_W / 2), 0.11, -segDepth / 2 + d * 8 + 2]} rotation={[-Math.PI / 2, 0, 0]}>
                   <planeGeometry args={[0.12, 3]} />
                   <meshStandardMaterial color="#fff" emissive="#fff" emissiveIntensity={0.2} side={THREE.DoubleSide} />
                 </mesh>
                 {/* Right carriageway center dash */}
-                <mesh position={[MEDIAN_W / 2 + CARRIAGE_W / 2, 0.11, -SEG_LEN / 2 + d * 8 + 2]} rotation={[-Math.PI / 2, 0, 0]}>
+                <mesh position={[MEDIAN_W / 2 + CARRIAGE_W / 2, 0.11, -segDepth / 2 + d * 8 + 2]} rotation={[-Math.PI / 2, 0, 0]}>
                   <planeGeometry args={[0.12, 3]} />
                   <meshStandardMaterial color="#fff" emissive="#fff" emissiveIntensity={0.2} side={THREE.DoubleSide} />
                 </mesh>
@@ -255,11 +284,11 @@ export function IndianHighwayRoad({ points }: { points: { x: number; y: number; 
 
             {/* Edge solid lines */}
             <mesh position={[-(MEDIAN_W / 2 + CARRIAGE_W), 0.11, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-              <planeGeometry args={[0.1, SEG_LEN]} />
+              <planeGeometry args={[0.1, segDepth]} />
               <meshStandardMaterial color="#eee" side={THREE.DoubleSide} />
             </mesh>
             <mesh position={[MEDIAN_W / 2 + CARRIAGE_W, 0.11, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-              <planeGeometry args={[0.1, SEG_LEN]} />
+              <planeGeometry args={[0.1, segDepth]} />
               <meshStandardMaterial color="#eee" side={THREE.DoubleSide} />
             </mesh>
 
@@ -329,6 +358,13 @@ export function IndianHighwayRoad({ points }: { points: { x: number; y: number; 
             {i % 10 === 5 && (
               <group position={[-(totalRoadHalf + 4), 0, 0]}>
                 <TrafficSignalPole state={(['red', 'yellow', 'green'] as const)[i % 3]} />
+              </group>
+            )}
+
+            {/* Speed breaker on left carriageway (straights only) */}
+            {i % 4 === 1 && Math.abs(path.rotation - Math.PI) < 0.35 && (
+              <group position={[-(MEDIAN_W / 2 + CARRIAGE_W / 2), 0, 0]}>
+                <SpeedBreakerMesh />
               </group>
             )}
           </group>

@@ -152,6 +152,7 @@ export interface RacePlayerState {
   health: number;
   checkpointIndex: number;
   distanceTraveled: number;
+  spawnZ: number;
   rank: number;
   finished: boolean;
   finishTime?: number;

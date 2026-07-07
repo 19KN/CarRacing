@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect, Suspense, memo } from 'react';
+import { useRef, useState, useEffect, useMemo, Suspense, memo } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { EffectComposer, Bloom, Vignette } from '@react-three/postprocessing';
 import * as THREE from 'three';
@@ -7,11 +7,13 @@ import { getFinishLineZ } from '../../utils/soloRace';
 import { VehicleMesh } from '../vehicles/VehicleMesh';
 import { MapEnvironment } from '../maps/MapEnvironment';
 import { PLAYER_LANE_X } from '../maps/IndianHighwayRoad';
+import { buildRoadCenterline, sampleRoadNearest, buildArcLengthTable } from '../maps/roadPath';
+import { speedBreakerRegistry, findSpeedBreakerHit } from '../maps/speedBreakers';
 import { WeatherSystem } from '../weather/WeatherSystem';
 import { TrafficSystem, trafficRegistry } from '../traffic/TrafficSystem';
 import { findTrafficCollision, getCollisionDamage } from '../traffic/trafficCollision';
 import { findPlayerCollision } from '../network/playerCollision';
-import { medianRegistry, findMedianObstacleCollision, getMedianCollisionDamage } from '../maps/medianCollision';
+import { medianRegistry, findMedianObstacleCollision, getMedianCollisionDamage, triggerPedestrianJump } from '../maps/medianCollision';
 import { SmokeParticles } from '../effects/Effects';
 import { PlayerNameLabel } from '../effects/PlayerNameLabel';
 import { triggerCollisionFeedback } from '../effects/collisionFeedback';
@@ -59,11 +61,17 @@ function PlayerVehicle({
   const trafficHitTimes = useRef(new Map<string, number>());
   const playerHitTimes = useRef(new Map<string, number>());
   const medianHitTimes = useRef(new Map<string, number>());
+  const bumpHitTimes = useRef(new Map<string, number>());
   const raceStartZ = useRef(spawnPosition.z);
   const lastDistanceReport = useRef(-1);
   const finishedRef = useRef(false);
   const maxSpeedRef = useRef(0);
   const map = getMapById(mapId) || getMapById(DEFAULT_MAP_ID)!;
+  const centerline = useMemo(
+    () => buildRoadCenterline(map.checkpoints.map((p) => ({ x: p.x, y: p.y, z: p.z }))),
+    [mapId],
+  );
+  const arcTable = useMemo(() => buildArcLengthTable(centerline), [centerline]);
   const totalRaceDistance = getMapRaceDistance(map);
   const finishZ = getFinishLineZ(totalRaceDistance, raceStartZ.current);
 
@@ -96,14 +104,34 @@ function PlayerVehicle({
     if (useRaceStore.getState().isRaceFinished) return;
 
     const health = useRaceStore.getState().health;
-    const state = physics.current.update(inputRef.current, delta, health);
+    const roadSample = sampleRoadNearest(centerline, arcTable, posRef.current.x, posRef.current.z);
+    const surfaceY = roadSample.y + 0.5;
+    const state = physics.current.update(inputRef.current, delta, health, surfaceY, roadSample.x);
     posRef.current = state.position;
     rotRef.current = state.rotation;
     velRef.current = state.velocity;
 
+    const bumpHit = findSpeedBreakerHit(
+      state.position.x,
+      state.position.z,
+      speedBreakerRegistry.breakers,
+    );
+    if (bumpHit && state.speed >= 12) {
+      const now = Date.now();
+      const lastHit = bumpHitTimes.current.get(bumpHit.id) ?? 0;
+      if (now - lastHit > 900) {
+        bumpHitTimes.current.set(bumpHit.id, now);
+        physics.current.applySpeedBump(state.speed);
+        playSound('brake');
+        triggerCollisionFeedback('small', state.speed * 0.55);
+      }
+    }
+
+    const renderState = physics.current.getState();
+
     if (groupRef.current) {
-      groupRef.current.position.set(state.position.x, state.position.y, state.position.z);
-      groupRef.current.rotation.y = state.rotation;
+      groupRef.current.position.set(renderState.position.x, renderState.position.y, renderState.position.z);
+      groupRef.current.rotation.y = renderState.rotation;
     }
 
     speedReportTimer.current += delta;
@@ -195,22 +223,29 @@ function PlayerVehicle({
       } else if (medianHit) {
         const now = Date.now();
         const lastHit = medianHitTimes.current.get(medianHit.id) ?? 0;
-        if (now - lastHit > 1200) {
+        if (now - lastHit > 900 && state.speed > 5) {
           medianHitTimes.current.set(medianHit.id, now);
-          collisionCooldown.current = 0.5;
-          const { severity, damage } = getMedianCollisionDamage(medianHit.type, state.speed);
-          const newHealth = Math.max(0, health - damage);
-          useRaceStore.getState().setHealth(newHealth);
-          physics.current.applyTrafficCollision(severity, medianHit.position.x);
-          playCollisionImpact(severity, state.speed);
-          triggerCollisionFeedback(severity, state.speed);
+          collisionCooldown.current = 0.35;
 
-          if (!isSolo) {
-            getSocket().emit(SocketEvents.COLLISION, {
-              playerId: useAuthStore.getState().profile.id,
-              severity,
-              position: { ...state.position },
-            });
+          if (medianHit.type === 'person') {
+            triggerPedestrianJump(medianHit.id, state.speed);
+            playSound('brake');
+            triggerCollisionFeedback('small', state.speed * 0.25);
+          } else {
+            const { severity, damage } = getMedianCollisionDamage(medianHit.type, state.speed);
+            const newHealth = Math.max(0, health - damage);
+            useRaceStore.getState().setHealth(newHealth);
+            physics.current.applyTrafficCollision(severity, medianHit.position.x);
+            playCollisionImpact(severity, state.speed);
+            triggerCollisionFeedback(severity, state.speed);
+
+            if (!isSolo) {
+              getSocket().emit(SocketEvents.COLLISION, {
+                playerId: useAuthStore.getState().profile.id,
+                severity,
+                position: { ...state.position },
+              });
+            }
           }
         }
       } else if (!isSolo) {

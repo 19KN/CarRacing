@@ -138,7 +138,7 @@ export function RaceHUD() {
         {rankings.length > 0 && (
           <div className="absolute top-20 right-4 hud-panel w-48">
             {rankings.slice(0, 5).map((r) => (
-              <div key={r.playerId} className={`flex justify-between text-xs py-0.5 ${r.playerId === profile.id ? 'text-saffron' : 'text-gray-400'}`}>
+              <div key={r.playerId} className={`flex justify-between text-xs py-0.5 ${r.playerId === playerId ? 'text-saffron' : 'text-gray-400'}`}>
                 <span>{r.rank}. {r.username}</span>
                 <span>{r.finished ? '✓' : ''}</span>
               </div>
@@ -204,6 +204,7 @@ export function SoloRace() {
         health: 100,
         checkpointIndex: 0,
         distanceTraveled: 0,
+        spawnZ: spawn.z,
         rank: 1,
         finished: false,
         isRespawning: false,

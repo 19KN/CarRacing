@@ -161,6 +161,17 @@ export function setupSocketHandlers(io: Server): void {
       const { gamingId, playerId } = socket.data as SocketData;
       if (!gamingId) return;
       const race = raceService.handleCheckpoint(gamingId, playerId, data.checkpointIndex);
+      if (race) {
+        io.to(gamingId).emit(SocketEvents.POSITION_RANK, {
+          rankings: race.players.map((p) => ({
+            playerId: p.playerId,
+            username: p.username,
+            rank: p.rank,
+            distanceTraveled: p.distanceTraveled,
+            finished: p.finished,
+          })),
+        });
+      }
       if (race?.status === 'finished') {
         const results = raceService.calculateResults(gamingId);
         io.to(gamingId).emit(SocketEvents.RACE_FINISH, { results });
@@ -296,6 +307,15 @@ function startRace(io: Server, gamingId: string, lobby: Lobby): void {
       rotation: p.rotation,
       velocity: p.velocity,
       rank: p.rank,
+    })),
+  });
+  io.to(gamingId).emit(SocketEvents.POSITION_RANK, {
+    rankings: race.players.map((p) => ({
+      playerId: p.playerId,
+      username: p.username,
+      rank: p.rank,
+      distanceTraveled: p.distanceTraveled,
+      finished: p.finished,
     })),
   });
   io.to(gamingId).emit(SocketEvents.WEATHER_SYNC, {

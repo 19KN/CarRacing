@@ -3,7 +3,7 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { getVehicleById, DEFAULT_VEHICLE_ID } from '@indian-racing/shared';
 import { getSocket, SocketEvents } from '../../utils/socket';
-import { useAuthStore, useRaceStore } from '../../stores';
+import { useAuthStore, useRaceStore, useLobbyStore } from '../../stores';
 import { VehicleMesh } from '../vehicles/VehicleMesh';
 import { PlayerNameLabel } from '../effects/PlayerNameLabel';
 
@@ -14,7 +14,7 @@ export function useNetworkSync(
   enabled = true,
 ) {
   const lastSent = useRef(0);
-  const playerId = useAuthStore((s) => s.profile.id);
+  const playerId = useLobbyStore((s) => s.localPlayerId) || useAuthStore((s) => s.profile.id);
   const updateRemote = useRaceStore((s) => s.updateRemotePlayer);
   const setRankings = useRaceStore((s) => s.setRankings);
   const setHealth = useRaceStore((s) => s.setHealth);

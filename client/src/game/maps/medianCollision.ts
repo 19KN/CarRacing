@@ -13,6 +13,38 @@ export interface MedianObstacle {
 
 export const medianRegistry = { obstacles: [] as MedianObstacle[] };
 
+interface PedestrianJump {
+  offset: number;
+  velocity: number;
+}
+
+export const pedestrianJumpRegistry = new Map<string, PedestrianJump>();
+
+export function triggerPedestrianJump(id: string, speedKmh: number) {
+  if (speedKmh < 8) return;
+  const intensity = Math.min(2.2, 0.45 + (speedKmh / 200) * 1.2);
+  const jump = pedestrianJumpRegistry.get(id) ?? { offset: 0, velocity: 0 };
+  jump.velocity = Math.max(jump.velocity, intensity * 6.5);
+  jump.offset = Math.max(jump.offset, intensity);
+  pedestrianJumpRegistry.set(id, jump);
+}
+
+export function updatePedestrianJumps(delta: number) {
+  for (const [id, jump] of pedestrianJumpRegistry) {
+    jump.velocity -= 30 * jump.offset * delta;
+    jump.velocity *= Math.max(0, 1 - 3.5 * delta);
+    jump.offset += jump.velocity * delta;
+    jump.offset = Math.max(0, jump.offset);
+    if (jump.offset <= 0.001 && Math.abs(jump.velocity) < 0.01) {
+      pedestrianJumpRegistry.delete(id);
+    }
+  }
+}
+
+export function getPedestrianJumpOffset(id: string): number {
+  return pedestrianJumpRegistry.get(id)?.offset ?? 0;
+}
+
 const PLAYER_HALF_WIDTH = 0.95;
 const PLAYER_HALF_LENGTH = 2.1;
 

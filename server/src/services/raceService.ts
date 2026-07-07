@@ -2,7 +2,7 @@ import {
   RaceState, RacePlayerState, WeatherType, TimeOfDay, TrafficSignalState,
   PositionUpdatePayload, CollisionPayload, CollisionSeverity,
   HEALTH_DAMAGE, getMapById, COIN_REWARDS, XP_PER_RACE, XP_PER_WIN,
-  LeaderboardEntry, RaceResult, getRaceSpawnPosition,
+  LeaderboardEntry, RaceResult, getRaceSpawnPosition, computeRaceProgress,
 } from '@indian-racing/shared';
 import { Lobby, LobbyPlayer } from '@indian-racing/shared';
 import { store } from './memoryStore';
@@ -46,6 +46,7 @@ export class RaceService {
       health: 100,
       checkpointIndex: 0,
       distanceTraveled: 0,
+      spawnZ: spawn.z,
       rank: index + 1,
       finished: false,
       isRespawning: false,
@@ -63,11 +64,11 @@ export class RaceService {
     player.position = update.position;
     player.rotation = update.rotation;
     player.velocity = update.velocity;
-
-    const speed = Math.sqrt(
-      update.velocity.x ** 2 + update.velocity.y ** 2 + update.velocity.z ** 2,
+    player.distanceTraveled = computeRaceProgress(
+      player.spawnZ,
+      update.position.z,
+      player.checkpointIndex,
     );
-    player.distanceTraveled += speed * (1 / config.serverTickRate);
 
     this.updateRanks(race);
     store.setRace(gamingId, race);
@@ -136,6 +137,12 @@ export class RaceService {
 
     if (checkpointIndex > player.checkpointIndex) {
       player.checkpointIndex = checkpointIndex;
+      player.distanceTraveled = computeRaceProgress(
+        player.spawnZ,
+        player.position.z,
+        player.checkpointIndex,
+      );
+      this.updateRanks(race);
     }
 
     const map = getMapById(race.mapId);

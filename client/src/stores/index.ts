@@ -210,7 +210,8 @@ export const useRaceStore = create<RaceStateStore>((set, get) => ({
   timeOfDay: 'morning',
   remotePlayers: {},
   setRace: (race) => {
-    const myId = useAuthStore.getState().profile.id;
+    const localPlayerId = useLobbyStore.getState().localPlayerId;
+    const myId = localPlayerId || useAuthStore.getState().profile.id;
     const remotePlayers: RaceStateStore['remotePlayers'] = {};
     if (race) {
       for (const p of race.players) {
@@ -223,6 +224,18 @@ export const useRaceStore = create<RaceStateStore>((set, get) => ({
         }
       }
     }
+    const myPlayer = race?.players.find((p) => p.playerId === myId);
+    const initialRankings = race
+      ? race.players
+        .map((p) => ({
+          playerId: p.playerId,
+          username: p.username,
+          rank: p.rank,
+          distanceTraveled: p.distanceTraveled,
+          finished: p.finished,
+        }))
+        .sort((a, b) => a.rank - b.rank)
+      : [];
     set({
       race,
       health: 100,
@@ -230,6 +243,8 @@ export const useRaceStore = create<RaceStateStore>((set, get) => ({
       finishTimeMs: null,
       maxRaceSpeed: 0,
       remotePlayers,
+      rankings: initialRankings,
+      position: myPlayer?.rank ?? 1,
     });
   },
   setResults: (results) => set({ results }),

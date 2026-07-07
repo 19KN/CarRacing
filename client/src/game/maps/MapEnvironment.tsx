@@ -11,7 +11,7 @@ export function MapEnvironment({ map }: { map: MapConfig }) {
   return (
     <group>
       <IndianHighwayRoad points={map.checkpoints} />
-      <MedianLife roadLength={roadLength} />
+      <MedianLife checkpoints={map.checkpoints} roadLength={roadLength} />
       <FinishLine z={finishZ} />
 
       {/* Distant hills */}
