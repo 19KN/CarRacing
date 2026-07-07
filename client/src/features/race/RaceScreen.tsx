@@ -7,7 +7,7 @@ import { lazy, Suspense } from 'react';
 import { LoadingSpinner } from '../../components/ui';
 
 const GameScene = lazy(() => import('../../game/core/GameScene').then((m) => ({ default: m.GameScene })));
-import { getMapById, DEFAULT_MAP_ID, getMapRaceDistance } from '@indian-racing/shared';
+import { getMapById, DEFAULT_MAP_ID, getMapRaceDistance, getRaceSpawnPosition } from '@indian-racing/shared';
 import { getSocket, SocketEvents } from '../../utils/socket';
 import { formatDistance, formatTime } from '../../utils/progression';
 import { buildSoloRaceResult } from '../../utils/soloRace';
@@ -169,7 +169,7 @@ export function RaceHUD() {
             <h2 className="text-2xl font-display font-bold text-saffron mb-6">Paused</h2>
             <div className="space-y-3">
               <button onClick={() => setPaused(false)} className="game-btn-primary w-full">Resume</button>
-              <button onClick={() => navigate('/menu')} className="game-btn-secondary w-full">Leave Race</button>
+              <button onClick={() => navigate('/race/solo')} className="game-btn-secondary w-full">Leave Race</button>
             </div>
           </div>
         </div>
@@ -179,16 +179,36 @@ export function RaceHUD() {
 }
 
 export function SoloRace() {
-  const profile = useAuthStore((s) => s.profile);
   const setRace = useRaceStore((s) => s.setRace);
   const setWeather = useRaceStore((s) => s.setWeather);
+  const selectedVehicleId = useLobbyStore((s) => s.selectedVehicleId);
+  const selectedVehicleColor = useLobbyStore((s) => s.selectedVehicleColor);
+  const profile = useAuthStore((s) => s.profile);
 
   useEffect(() => {
+    const vehicleId = selectedVehicleId || profile.favoriteVehicle;
+    const vehicleColor = selectedVehicleColor || '#FF9933';
+    const spawn = getRaceSpawnPosition(0, 1);
     setRace({
       lobbyId: 'solo',
-      mapId: 'bangalore_hyderabad',
+      mapId: DEFAULT_MAP_ID,
       status: 'racing',
-      players: [],
+      players: [{
+        playerId: profile.id,
+        username: profile.username,
+        vehicleId,
+        vehicleColor,
+        position: { x: spawn.x, y: spawn.y, z: spawn.z },
+        rotation: spawn.rotation,
+        velocity: { x: 0, y: 0, z: 0 },
+        health: 100,
+        checkpointIndex: 0,
+        distanceTraveled: 0,
+        rank: 1,
+        finished: false,
+        isRespawning: false,
+        nitroRemaining: 3,
+      }],
       weather: 'clear',
       timeOfDay: 'morning',
       startedAt: Date.now(),
@@ -197,7 +217,7 @@ export function SoloRace() {
       trafficSignalTimer: 0,
     });
     setWeather('clear', 'morning');
-  }, []);
+  }, [profile.favoriteVehicle, profile.id, profile.username, selectedVehicleColor, selectedVehicleId, setRace, setWeather]);
 
   return <RaceHUD />;
 }

@@ -5,6 +5,7 @@ import { AuthScreen } from '../features/auth/AuthScreen';
 import { MainMenu } from '../features/menu/MainMenu';
 import { CreateLobby, JoinLobby, LobbyScreen } from '../features/lobby/LobbyScreens';
 import { RaceHUD, SoloRace } from '../features/race/RaceScreen';
+import { SoloPracticeSetup } from '../features/race/SoloPracticeSetup';
 import { ResultsScreen } from '../features/race/ResultsScreen';
 import { GarageScreen } from '../features/garage/GarageScreen';
 import { SettingsScreen } from '../features/settings/SettingsScreen';
@@ -36,7 +37,8 @@ export function App() {
         <Route path="/lobby/join" element={<ProtectedRoute><JoinLobby /></ProtectedRoute>} />
         <Route path="/lobby" element={<ProtectedRoute><LobbyScreen /></ProtectedRoute>} />
         <Route path="/race" element={<ProtectedRoute><RaceHUD /></ProtectedRoute>} />
-        <Route path="/race/solo" element={<ProtectedRoute><SoloRace /></ProtectedRoute>} />
+        <Route path="/race/solo" element={<ProtectedRoute><SoloPracticeSetup /></ProtectedRoute>} />
+        <Route path="/race/solo/play" element={<ProtectedRoute><SoloRace /></ProtectedRoute>} />
         <Route path="/results" element={<ProtectedRoute><ResultsScreen /></ProtectedRoute>} />
         <Route path="/garage" element={<ProtectedRoute><GarageScreen /></ProtectedRoute>} />
         <Route path="/settings" element={<ProtectedRoute><SettingsScreen /></ProtectedRoute>} />
