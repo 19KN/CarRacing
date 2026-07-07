@@ -1,0 +1,37 @@
+{
+  "name": "@indian-racing/client",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@indian-racing/shared": "*",
+    "@react-three/drei": "^9.121.4",
+    "@react-three/fiber": "^8.17.14",
+    "@react-three/postprocessing": "^2.16.6",
+    "howler": "^2.2.4",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^7.1.1",
+    "socket.io-client": "^4.8.1",
+    "three": "^0.172.0",
+    "zustand": "^5.0.3"
+  },
+  "devDependencies": {
+    "@types/howler": "^2.2.12",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "@types/three": "^0.172.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.7.3",
+    "vite": "^6.0.7"
+  }
+}

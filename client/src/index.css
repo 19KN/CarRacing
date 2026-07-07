@@ -1,0 +1,51 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    @apply box-border;
+  }
+  body {
+    @apply font-body antialiased;
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
+@layer components {
+  .game-card {
+    @apply bg-game-card/80 backdrop-blur-md border border-game-border rounded-xl p-6 shadow-2xl;
+  }
+  .game-btn {
+    @apply px-6 py-3 rounded-lg font-display font-semibold text-lg transition-all duration-200 
+           hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100;
+  }
+  .game-btn-primary {
+    @apply game-btn bg-gradient-to-r from-saffron to-orange-600 text-white shadow-lg shadow-saffron/30;
+  }
+  .game-btn-secondary {
+    @apply game-btn bg-game-border text-white hover:bg-game-accent/20 border border-game-accent/30;
+  }
+  .game-btn-danger {
+    @apply game-btn bg-red-600/80 text-white hover:bg-red-500;
+  }
+  .game-input {
+    @apply w-full px-4 py-3 bg-game-dark border border-game-border rounded-lg text-white 
+           placeholder-gray-500 focus:outline-none focus:border-saffron transition-colors;
+  }
+  .hud-panel {
+    @apply bg-black/50 backdrop-blur-sm border border-white/10 rounded-lg px-4 py-2;
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #0a0e1a;
+}
+::-webkit-scrollbar-thumb {
+  background: #1e2a45;
+  border-radius: 3px;
+}
