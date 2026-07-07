@@ -2,7 +2,7 @@ import {
   RaceState, RacePlayerState, WeatherType, TimeOfDay, TrafficSignalState,
   PositionUpdatePayload, CollisionPayload, CollisionSeverity,
   HEALTH_DAMAGE, getMapById, COIN_REWARDS, XP_PER_RACE, XP_PER_WIN,
-  LeaderboardEntry, RaceResult,
+  LeaderboardEntry, RaceResult, getRaceSpawnPosition,
 } from '@indian-racing/shared';
 import { Lobby, LobbyPlayer } from '@indian-racing/shared';
 import { store } from './memoryStore';
@@ -20,7 +20,7 @@ export class RaceService {
       lobbyId: lobby.gamingId,
       mapId: lobby.settings.mapId,
       status: 'racing',
-      players: lobby.players.map((p, i) => this.createPlayerState(p, i)),
+      players: lobby.players.map((p, i) => this.createPlayerState(p, i, lobby.players.length)),
       weather,
       timeOfDay,
       startedAt: Date.now(),
@@ -33,14 +33,15 @@ export class RaceService {
     return race;
   }
 
-  private createPlayerState(player: LobbyPlayer, index: number): RacePlayerState {
+  private createPlayerState(player: LobbyPlayer, index: number, totalPlayers: number): RacePlayerState {
+    const spawn = getRaceSpawnPosition(index, totalPlayers);
     return {
       playerId: player.id,
       username: player.username,
       vehicleId: player.vehicleId,
       vehicleColor: player.vehicleColor,
-      position: { x: (index - 2) * 4, y: 0.5, z: 5 },
-      rotation: 0,
+      position: { x: spawn.x, y: spawn.y, z: spawn.z },
+      rotation: spawn.rotation,
       velocity: { x: 0, y: 0, z: 0 },
       health: 100,
       checkpointIndex: 0,

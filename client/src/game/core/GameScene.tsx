@@ -2,7 +2,7 @@ import { useRef, useState, useEffect, Suspense, memo } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { EffectComposer, Bloom, Vignette } from '@react-three/postprocessing';
 import * as THREE from 'three';
-import { getVehicleById, getMapById, DEFAULT_MAP_ID, DEFAULT_VEHICLE_ID, getMapRaceDistance } from '@indian-racing/shared';
+import { getVehicleById, getMapById, DEFAULT_MAP_ID, DEFAULT_VEHICLE_ID, getMapRaceDistance, RACE_START_Z } from '@indian-racing/shared';
 import { getFinishLineZ } from '../../utils/soloRace';
 import { VehicleMesh } from '../vehicles/VehicleMesh';
 import { MapEnvironment } from '../maps/MapEnvironment';
@@ -12,13 +12,14 @@ import { TrafficSystem, trafficRegistry } from '../traffic/TrafficSystem';
 import { findTrafficCollision, getCollisionDamage } from '../traffic/trafficCollision';
 import { findPlayerCollision } from '../network/playerCollision';
 import { SmokeParticles } from '../effects/Effects';
+import { PlayerNameLabel } from '../effects/PlayerNameLabel';
 import { triggerCollisionFeedback } from '../effects/collisionFeedback';
 import { useCameraController, useCameraSwitcher } from '../camera/CameraController';
 import { useVehicleControls } from '../core/controls';
 import { createVehiclePhysics } from '../physics/vehiclePhysics';
 import { useAudioManager } from '../audio/AudioManager';
 import { useNetworkSync, RemotePlayer } from '../network/NetworkSync';
-import { useAuthStore, useRaceStore, useLobbyStore, useSettingsStore } from '../../stores';
+import { useAuthStore, useRaceStore, useSettingsStore } from '../../stores';
 import { getSocket, SocketEvents } from '../../utils/socket';
 import { CameraMode } from '@indian-racing/shared';
 
@@ -27,11 +28,15 @@ function PlayerVehicle({
   vehicleColor,
   mapId,
   isSolo,
+  spawnPosition,
+  username,
 }: {
   vehicleId: string;
   vehicleColor: string;
   mapId: string;
   isSolo: boolean;
+  spawnPosition: { x: number; y: number; z: number; rotation: number };
+  username: string;
 }) {
   const groupRef = useRef<THREE.Group>(null);
   const config = getVehicleById(vehicleId) || getVehicleById(DEFAULT_VEHICLE_ID)!;
@@ -41,8 +46,8 @@ function PlayerVehicle({
   const [cameraMode, setCameraMode] = useState<CameraMode>('thirdPerson');
   const health = useRaceStore((s) => s.health);
   const { playEngine, playSound, playCollisionImpact, playCelebration, stopEngine } = useAudioManager();
-  const posRef = useRef({ x: PLAYER_LANE_X, y: 0.5, z: 20 });
-  const rotRef = useRef(0);
+  const posRef = useRef({ x: spawnPosition.x, y: spawnPosition.y, z: spawnPosition.z });
+  const rotRef = useRef(spawnPosition.rotation);
   const velRef = useRef({ x: 0, y: 0, z: 0 });
   const checkpointRef = useRef(0);
   const hornCooldown = useRef(0);
@@ -51,7 +56,7 @@ function PlayerVehicle({
   const collisionCooldown = useRef(0);
   const trafficHitTimes = useRef(new Map<string, number>());
   const playerHitTimes = useRef(new Map<string, number>());
-  const raceStartZ = useRef(20);
+  const raceStartZ = useRef(spawnPosition.z);
   const lastDistanceReport = useRef(-1);
   const finishedRef = useRef(false);
   const maxSpeedRef = useRef(0);
@@ -63,10 +68,10 @@ function PlayerVehicle({
   useNetworkSync(posRef, rotRef, velRef, !isSolo);
 
   useEffect(() => {
-    physics.current.setPosition(PLAYER_LANE_X, 0.5, 20, Math.PI);
+    physics.current.setPosition(spawnPosition.x, spawnPosition.y, spawnPosition.z, spawnPosition.rotation);
     if (groupRef.current) {
-      groupRef.current.position.set(PLAYER_LANE_X, 0.5, 20);
-      groupRef.current.rotation.y = Math.PI;
+      groupRef.current.position.set(spawnPosition.x, spawnPosition.y, spawnPosition.z);
+      groupRef.current.rotation.y = spawnPosition.rotation;
     }
     const handleKey = (e: KeyboardEvent) => {
       if (e.code === 'KeyC') {
@@ -224,6 +229,7 @@ function PlayerVehicle({
     <group ref={groupRef}>
       <VehicleMesh config={config} color={vehicleColor} />
       <SmokeParticles active={health < 50 && health > 0} position={[0, 0.5, -1]} />
+      {!isSolo && <PlayerNameLabel name={username} isLocal />}
     </group>
   );
 }
@@ -242,20 +248,16 @@ function GameWorld({
   const map = getMapById(mapId) || getMapById(DEFAULT_MAP_ID)!;
   const weather = useRaceStore((s) => s.weather) as 'clear' | 'rain' | 'fog' | 'thunder' | 'wind';
   const timeOfDay = useRaceStore((s) => s.timeOfDay) as 'morning' | 'afternoon' | 'evening' | 'night' | 'sunrise' | 'sunset';
-  const lobby = useLobbyStore((s) => s.lobby);
   const race = useRaceStore((s) => s.race);
   const playerId = useAuthStore((s) => s.profile.id);
+  const username = useAuthStore((s) => s.profile.username);
   const [signalState, setSignalState] = useState<'red' | 'yellow' | 'green'>('green');
   const isMultiplayer = (race?.players.length ?? 0) >= 2;
-  const otherPlayers = race?.players.filter((p) => p.playerId !== playerId)
-    ?? lobby?.players.filter((p) => p.id !== playerId).map((p) => ({
-      playerId: p.id,
-      vehicleId: p.vehicleId,
-      vehicleColor: p.vehicleColor,
-      position: { x: 0, y: 0.5, z: 5 },
-      rotation: Math.PI,
-    }))
-    ?? [];
+  const myRacePlayer = race?.players.find((p) => p.playerId === playerId);
+  const spawnPosition = myRacePlayer
+    ? { x: myRacePlayer.position.x, y: myRacePlayer.position.y, z: myRacePlayer.position.z, rotation: myRacePlayer.rotation }
+    : { x: PLAYER_LANE_X, y: 0.5, z: RACE_START_Z, rotation: Math.PI };
+  const otherPlayers = race?.players.filter((p) => p.playerId !== playerId) ?? [];
 
   useEffect(() => {
     const socket = getSocket();
@@ -275,11 +277,14 @@ function GameWorld({
         vehicleColor={vehicleColor}
         mapId={mapId}
         isSolo={isSolo}
+        spawnPosition={spawnPosition}
+        username={myRacePlayer?.username || username}
       />
       {!isSolo && isMultiplayer && otherPlayers.map((p) => (
         <RemotePlayer
           key={p.playerId}
           playerId={p.playerId}
+          username={p.username}
           vehicleId={p.vehicleId}
           vehicleColor={p.vehicleColor}
           initialPosition={p.position}

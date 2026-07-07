@@ -5,6 +5,7 @@ import { getVehicleById, DEFAULT_VEHICLE_ID } from '@indian-racing/shared';
 import { getSocket, SocketEvents } from '../../utils/socket';
 import { useAuthStore, useRaceStore } from '../../stores';
 import { VehicleMesh } from '../vehicles/VehicleMesh';
+import { PlayerNameLabel } from '../effects/PlayerNameLabel';
 
 export function useNetworkSync(
   localPosition: React.RefObject<{ x: number; y: number; z: number }>,
@@ -77,12 +78,14 @@ export function useNetworkSync(
 
 export function RemotePlayer({
   playerId,
+  username,
   vehicleId,
   vehicleColor,
   initialPosition,
   initialRotation,
 }: {
   playerId: string;
+  username: string;
   vehicleId: string;
   vehicleColor: string;
   initialPosition: { x: number; y: number; z: number };
@@ -113,6 +116,7 @@ export function RemotePlayer({
       rotation={[0, initialRotation, 0]}
     >
       <VehicleMesh config={config} color={vehicleColor} />
+      <PlayerNameLabel name={username} />
     </group>
   );
 }
