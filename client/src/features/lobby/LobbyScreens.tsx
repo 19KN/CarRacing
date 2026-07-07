@@ -187,12 +187,8 @@ export function LobbyScreen() {
   const lobby = useLobbyStore((s) => s.lobby);
   const chat = useLobbyStore((s) => s.chat);
   const addChat = useLobbyStore((s) => s.addChat);
-  const setLobby = useLobbyStore((s) => s.setLobby);
   const resetLobby = useLobbyStore((s) => s.reset);
   const profile = useAuthStore((s) => s.profile);
-  const setRace = useRaceStore((s) => s.setRace);
-  const setCountdown = useRaceStore((s) => s.setCountdown);
-  const setWeather = useRaceStore((s) => s.setWeather);
   const countdown = useRaceStore((s) => s.countdown);
   const [message, setMessage] = useState('');
   const [copied, setCopied] = useState(false);
@@ -203,34 +199,12 @@ export function LobbyScreen() {
     if (!lobby) { navigate('/menu'); return; }
     const socket = connectSocket();
 
-    socket.on(SocketEvents.LOBBY_UPDATE, (data: { lobby: typeof lobby }) => {
-      setLobby(data.lobby);
-    });
     socket.on(SocketEvents.CHAT, (data: { chat: typeof chat[0] }) => {
       addChat(data.chat);
     });
-    socket.on(SocketEvents.COUNTDOWN, (data: { value: number }) => {
-      setCountdown(data.value);
-    });
-    socket.on(SocketEvents.RACE_START, (data: { race: Parameters<typeof setRace>[0] }) => {
-      setRace(data.race);
-      setCountdown(null);
-      navigate('/race');
-    });
-    socket.on(SocketEvents.WEATHER_SYNC, (data: { weather: string; timeOfDay: string }) => {
-      setWeather(data.weather, data.timeOfDay);
-    });
-    socket.on(SocketEvents.ERROR, (data: { message: string }) => {
-      console.error('Socket error:', data.message);
-    });
 
     return () => {
-      socket.off(SocketEvents.LOBBY_UPDATE);
       socket.off(SocketEvents.CHAT);
-      socket.off(SocketEvents.COUNTDOWN);
-      socket.off(SocketEvents.RACE_START);
-      socket.off(SocketEvents.WEATHER_SYNC);
-      socket.off(SocketEvents.ERROR);
     };
   }, [lobby?.gamingId]);
 

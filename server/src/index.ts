@@ -7,6 +7,7 @@ import path from 'path';
 import { config } from './config';
 import apiRouter from './controllers/api';
 import { setupSocketHandlers } from './sockets';
+import { setIo } from './sockets/io';
 
 const app = express();
 const httpServer = createServer(app);
@@ -43,6 +44,7 @@ if (config.nodeEnv === 'production') {
   });
 }
 
+setIo(io);
 setupSocketHandlers(io);
 
 httpServer.listen(config.port, () => {

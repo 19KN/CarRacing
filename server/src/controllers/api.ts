@@ -5,9 +5,10 @@ import {
 import { lobbyService } from '../services/lobbyService';
 import { store } from '../services/memoryStore';
 import { raceService } from '../services/raceService';
-import { VEHICLES, MAPS, ACHIEVEMENTS } from '@indian-racing/shared';
+import { VEHICLES, MAPS, ACHIEVEMENTS, SocketEvents } from '@indian-racing/shared';
 import { authMiddleware } from '../middleware/auth';
 import { MaxPlayers } from '@indian-racing/shared';
+import { getIo } from '../sockets/io';
 
 const router = Router();
 
@@ -86,6 +87,7 @@ router.post('/lobby/join', authMiddleware, (req: Request, res: Response) => {
     res.status(400).json({ error: result.error });
     return;
   }
+  getIo()?.to(gamingId).emit(SocketEvents.LOBBY_UPDATE, { lobby: result.lobby });
   res.json({ lobby: result.lobby });
 });
 

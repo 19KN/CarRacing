@@ -62,8 +62,6 @@ export class LobbyService {
   ): { lobby: Lobby } | { error: string } {
     const lobby = store.getLobby(gamingId);
     if (!lobby) return { error: 'Lobby not found' };
-    if (lobby.status !== 'waiting') return { error: 'Race already in progress' };
-    if (lobby.players.length >= lobby.settings.maxPlayers) return { error: 'Lobby is full' };
 
     const existing = lobby.players.find((p) => p.id === playerId);
     if (existing) {
@@ -71,6 +69,9 @@ export class LobbyService {
       store.setLobby(gamingId, lobby);
       return { lobby };
     }
+
+    if (lobby.status !== 'waiting') return { error: 'Race already in progress' };
+    if (lobby.players.length >= lobby.settings.maxPlayers) return { error: 'Lobby is full' };
 
     const player: LobbyPlayer = {
       id: playerId,
@@ -107,6 +108,18 @@ export class LobbyService {
 
     lobby.players.forEach((p) => { p.isReady = false; });
     lobby.status = 'waiting';
+    store.setLobby(gamingId, lobby);
+    return lobby;
+  }
+
+  markPlayerDisconnected(gamingId: string, playerId: string): Lobby | null {
+    const lobby = store.getLobby(gamingId);
+    if (!lobby) return null;
+
+    const player = lobby.players.find((p) => p.id === playerId);
+    if (!player) return null;
+
+    player.socketId = '';
     store.setLobby(gamingId, lobby);
     return lobby;
   }

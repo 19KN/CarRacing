@@ -14,6 +14,7 @@ interface SocketData {
 }
 
 const countdownTimers = new Map<string, NodeJS.Timeout>();
+const countdownValues = new Map<string, number>();
 const raceTickIntervals = new Map<string, NodeJS.Timeout>();
 
 export function setupSocketHandlers(io: Server): void {
@@ -52,6 +53,16 @@ export function setupSocketHandlers(io: Server): void {
       socket.to(data.gamingId).emit(SocketEvents.PLAYER_JOINED, {
         player: result.lobby.players.find((p) => p.id === auth.playerId),
       });
+
+      const race = raceService.getRace(data.gamingId);
+      if (race && result.lobby.status === 'racing') {
+        socket.emit(SocketEvents.RACE_START, { race });
+      } else if (result.lobby.status === 'countdown') {
+        const count = countdownValues.get(data.gamingId);
+        if (count !== undefined) {
+          socket.emit(SocketEvents.COUNTDOWN, { value: count });
+        }
+      }
     });
 
     socket.on(SocketEvents.LEAVE_LOBBY, () => {
@@ -214,24 +225,49 @@ export function setupSocketHandlers(io: Server): void {
     });
 
     socket.on('disconnect', () => {
-      handleLeave(socket, io);
+      handleDisconnect(socket, io);
       console.log(`Client disconnected: ${socket.id}`);
     });
   });
 }
 
+function ensurePlayersInRoom(io: Server, gamingId: string, lobby: Lobby): void {
+  for (const player of lobby.players) {
+    if (!player.socketId || player.socketId === 'bot') continue;
+    const playerSocket = io.sockets.sockets.get(player.socketId);
+    if (!playerSocket) continue;
+    playerSocket.data = {
+      playerId: player.id,
+      username: player.username,
+      gamingId,
+    };
+    playerSocket.join(gamingId);
+  }
+}
+
 function startCountdown(io: Server, gamingId: string, lobby: Lobby): void {
   if (countdownTimers.has(gamingId)) return;
 
+  const currentLobby = lobbyService.getLobby(gamingId) || lobby;
+  ensurePlayersInRoom(io, gamingId, currentLobby);
   lobbyService.setLobbyStatus(gamingId, 'countdown');
+  const updatedLobby = lobbyService.getLobby(gamingId);
+  if (updatedLobby) {
+    io.to(gamingId).emit(SocketEvents.LOBBY_UPDATE, { lobby: updatedLobby });
+  }
+
   let count = config.countdownSeconds;
+  countdownValues.set(gamingId, count);
 
   const tick = () => {
+    ensurePlayersInRoom(io, gamingId, lobbyService.getLobby(gamingId) || currentLobby);
+    countdownValues.set(gamingId, count);
     io.to(gamingId).emit(SocketEvents.COUNTDOWN, { value: count });
     if (count <= 0) {
       clearInterval(countdownTimers.get(gamingId)!);
       countdownTimers.delete(gamingId);
-      startRace(io, gamingId, lobby);
+      countdownValues.delete(gamingId);
+      startRace(io, gamingId, currentLobby);
       return;
     }
     count--;
@@ -245,6 +281,7 @@ function startCountdown(io: Server, gamingId: string, lobby: Lobby): void {
 function startRace(io: Server, gamingId: string, lobby: Lobby): void {
   lobbyService.setLobbyStatus(gamingId, 'racing');
   const currentLobby = lobbyService.getLobby(gamingId) || lobby;
+  ensurePlayersInRoom(io, gamingId, currentLobby);
   const race = raceService.createRace(currentLobby);
 
   io.to(gamingId).emit(SocketEvents.RACE_START, { race });
@@ -274,6 +311,17 @@ function cleanupRace(gamingId: string): void {
     raceTickIntervals.delete(gamingId);
   }
   lobbyService.setLobbyStatus(gamingId, 'finished');
+}
+
+function handleDisconnect(socket: Socket, io: Server): void {
+  const { gamingId, playerId } = socket.data as SocketData;
+  if (!gamingId || !playerId) return;
+
+  const lobby = lobbyService.markPlayerDisconnected(gamingId, playerId);
+  socket.leave(gamingId);
+  if (lobby) {
+    io.to(gamingId).emit(SocketEvents.LOBBY_UPDATE, { lobby });
+  }
 }
 
 function handleLeave(socket: Socket, io: Server): void {

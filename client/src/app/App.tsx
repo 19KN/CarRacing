@@ -10,6 +10,7 @@ import { GarageScreen } from '../features/garage/GarageScreen';
 import { SettingsScreen } from '../features/settings/SettingsScreen';
 import { ProfileScreen } from '../features/profile/ProfileScreen';
 import { LeaderboardScreen } from '../features/leaderboard/LeaderboardScreen';
+import { SocketSync } from '../components/SocketSync';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
@@ -27,6 +28,7 @@ export function App() {
 
   return (
     <BrowserRouter>
+      <SocketSync />
       <Routes>
         <Route path="/" element={isAuthenticated ? <Navigate to="/menu" /> : <AuthScreen />} />
         <Route path="/menu" element={<ProtectedRoute><MainMenu /></ProtectedRoute>} />
