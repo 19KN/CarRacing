@@ -1,10 +1,10 @@
 import type { ArcLengthData, PathPoint } from './roadPath';
 import { buildRoadCenterline, sampleRoadAtDistance } from './roadPath';
 
-const MEDIAN_W = 3;
-const CARRIAGE_W = 7;
+import { MODULAR_TILE_SCALE } from '@indian-racing/shared';
+
 const SEG_LEN = 28;
-const LEFT_CARRIAGEWAY_CENTER_X = -(MEDIAN_W / 2 + CARRIAGE_W / 2);
+const LEFT_CARRIAGEWAY_CENTER_X = -MODULAR_TILE_SCALE * 0.32;
 
 export interface SpeedBreaker {
   id: string;

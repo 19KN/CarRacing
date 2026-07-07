@@ -14,14 +14,10 @@ import {
   offsetFromRoadSample,
   type PathPoint,
 } from './roadPath';
+import { MODULAR_TILE_SCALE } from '@indian-racing/shared';
 
 const SEG_LEN = 28;
-const MEDIAN_W = 3;
-const SHOULDER_W = 2;
-const SIDEWALK_W = 2.5;
-const CARRIAGE_W = 7;
-const TOTAL_ROAD_HALF = CARRIAGE_W + MEDIAN_W / 2 + SHOULDER_W;
-const SIDEWALK_X = TOTAL_ROAD_HALF + SHOULDER_W + SIDEWALK_W / 2;
+const SIDEWALK_X = MODULAR_TILE_SCALE + 4;
 
 function seededRandom(seed: number): number {
   const x = Math.sin(seed * 127.1 + 311.7) * 43758.5453;

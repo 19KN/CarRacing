@@ -1,132 +1,108 @@
 import { Vector3 } from './types';
 
-interface TrackSection {
-  straightFrac?: number;
-  arcRadius?: number;
-  sweepDeg?: number;
-}
+export const MODULAR_TILE_SCALE = 10;
+const STRAIGHT_TILES = 2; // each split piece spans 2 units on Z
+const CURVE_RADIUS = 1; // one tile radius in the kit
 
-const F1_TRACK_TEMPLATE: TrackSection[] = [
-  { straightFrac: 0.22 },
-  { arcRadius: 82, sweepDeg: 52 },
-  { straightFrac: 0.09 },
-  { arcRadius: 46, sweepDeg: -68 },
-  { straightFrac: 0.07 },
-  { arcRadius: 38, sweepDeg: 88 },
-  { straightFrac: 0.08 },
-  { arcRadius: 28, sweepDeg: -115 },
-  { straightFrac: 0.11 },
-  { arcRadius: 105, sweepDeg: 38 },
-  { straightFrac: 0.08 },
-  { arcRadius: 58, sweepDeg: -48 },
-  { straightFrac: 0.13 },
+export type ModularSegment =
+  | { type: 'straight'; tiles: number }
+  | { type: 'curveRight' }
+  | { type: 'curveLeft' };
+
+const F1_MODULAR_LAYOUT: ModularSegment[] = [
+  { type: 'straight', tiles: 10 },
+  { type: 'curveRight' },
+  { type: 'straight', tiles: 5 },
+  { type: 'curveLeft' },
+  { type: 'straight', tiles: 4 },
+  { type: 'curveRight' },
+  { type: 'curveRight' },
+  { type: 'straight', tiles: 6 },
+  { type: 'curveLeft' },
+  { type: 'straight', tiles: 5 },
+  { type: 'curveRight' },
+  { type: 'straight', tiles: 8 },
 ];
 
-function arcLength(radius: number, sweepDeg: number): number {
-  return radius * Math.abs(sweepDeg) * (Math.PI / 180);
+interface Cursor {
+  x: number;
+  y: number;
+  z: number;
+  heading: number;
 }
 
-function walkStraight(
-  points: Vector3[],
-  x: number,
-  y: number,
-  z: number,
-  heading: number,
-  length: number,
-): { x: number; y: number; z: number } {
-  let px = x;
-  let py = y;
-  let pz = z;
-  let remaining = length;
-  while (remaining > 0) {
-    const step = Math.min(remaining, 35);
-    px += Math.sin(heading) * step;
-    pz += Math.cos(heading) * step;
-    remaining -= step;
-    points.push({ x: px, y: py, z: pz });
+function rightVector(heading: number) {
+  return { x: -Math.cos(heading), z: Math.sin(heading) };
+}
+
+function forwardVector(heading: number) {
+  return { x: Math.sin(heading), z: Math.cos(heading) };
+}
+
+function appendStraight(points: Vector3[], cursor: Cursor, tiles: number) {
+  const length = tiles * STRAIGHT_TILES * MODULAR_TILE_SCALE;
+  const steps = Math.max(4, tiles * 3);
+  for (let i = 1; i <= steps; i++) {
+    const t = i / steps;
+    const fwd = forwardVector(cursor.heading);
+    points.push({
+      x: cursor.x + fwd.x * length * t,
+      y: 0,
+      z: cursor.z + fwd.z * length * t,
+    });
   }
-  return { x: px, y: py, z: pz };
+  const fwd = forwardVector(cursor.heading);
+  cursor.x += fwd.x * length;
+  cursor.z += fwd.z * length;
 }
 
-function walkArc(
-  points: Vector3[],
-  x: number,
-  y: number,
-  z: number,
-  heading: number,
-  radius: number,
-  sweepDeg: number,
-): { x: number; y: number; z: number; heading: number } {
-  const sweep = (sweepDeg * Math.PI) / 180;
-  const len = arcLength(radius, sweepDeg);
-  const steps = Math.max(5, Math.ceil(len / 22));
-  const dAngle = sweep / steps;
-  let px = x;
-  let py = y;
-  let pz = z;
-  let h = heading;
+function appendCurve(points: Vector3[], cursor: Cursor, turn: 'curveRight' | 'curveLeft') {
+  const radius = CURVE_RADIUS * MODULAR_TILE_SCALE;
+  const sweep = turn === 'curveRight' ? -Math.PI / 2 : Math.PI / 2;
+  const right = rightVector(cursor.heading);
+  const centerX = cursor.x + right.x * radius;
+  const centerZ = cursor.z + right.z * radius;
+  const startAngle = Math.atan2(cursor.x - centerX, cursor.z - centerZ);
+  const steps = 14;
 
-  for (let i = 0; i < steps; i++) {
-    const midH = h + dAngle / 2;
-    const chord = 2 * radius * Math.sin(Math.abs(dAngle) / 2);
-    px += Math.sin(midH) * chord;
-    pz += Math.cos(midH) * chord;
-    py += Math.sin((i / steps) * Math.PI) * 0.12;
-    h += dAngle;
-    points.push({ x: px, y: py, z: pz });
+  for (let i = 1; i <= steps; i++) {
+    const angle = startAngle + (sweep * i) / steps;
+    points.push({
+      x: centerX + Math.sin(angle) * radius,
+      y: Math.sin((i / steps) * Math.PI) * 0.1,
+      z: centerZ + Math.cos(angle) * radius,
+    });
   }
 
-  return { x: px, y: py, z: pz, heading: h };
+  const endAngle = startAngle + sweep;
+  cursor.x = centerX + Math.sin(endAngle) * radius;
+  cursor.z = centerZ + Math.cos(endAngle) * radius;
+  cursor.heading += sweep;
 }
 
-/** F1-style track: long straights + hairpins, chicanes, and sweepers */
-export function generateF1TrackCheckpoints(
-  targetLength: number,
-  intensity = 1,
-  startZ = 30,
-): Vector3[] {
+export function buildModularTrackLayout(): ModularSegment[] {
+  return F1_MODULAR_LAYOUT;
+}
+
+export function buildModularCenterline(startZ = 30, intensity = 1): Vector3[] {
+  const layout = F1_MODULAR_LAYOUT;
   const points: Vector3[] = [{ x: 0, y: 0, z: startZ }];
+  const cursor: Cursor = { x: 0, y: 0, z: startZ, heading: Math.PI };
 
-  let arcTotal = 0;
-  let straightFracTotal = 0;
-  for (const s of F1_TRACK_TEMPLATE) {
-    if (s.straightFrac) straightFracTotal += s.straightFrac;
-    if (s.arcRadius && s.sweepDeg) {
-      arcTotal += arcLength(s.arcRadius / intensity, s.sweepDeg * intensity);
-    }
-  }
-
-  const straightBudget = Math.max(targetLength - arcTotal, targetLength * 0.35);
-  let x = 0;
-  let y = 0;
-  let z = startZ;
-  let heading = Math.PI;
-
-  for (const section of F1_TRACK_TEMPLATE) {
-    if (section.straightFrac) {
-      const len = straightBudget * (section.straightFrac / straightFracTotal);
-      const next = walkStraight(points, x, y, z, heading, len);
-      x = next.x;
-      y = next.y;
-      z = next.z;
-    } else if (section.arcRadius && section.sweepDeg) {
-      const result = walkArc(
-        points,
-        x,
-        y,
-        z,
-        heading,
-        section.arcRadius / intensity,
-        section.sweepDeg * intensity,
-      );
-      x = result.x;
-      y = result.y;
-      z = result.z;
-      heading = result.heading;
+  for (const segment of layout) {
+    const tileMul = Math.max(0.75, intensity);
+    if (segment.type === 'straight') {
+      appendStraight(points, cursor, Math.max(1, Math.round(segment.tiles * tileMul)));
+    } else {
+      appendCurve(points, cursor, segment.type);
     }
   }
 
   return points;
+}
+
+export function generateF1TrackCheckpoints(targetLength: number, intensity = 1, startZ = 30): Vector3[] {
+  return buildModularCenterline(startZ, intensity);
 }
 
 export function estimateTrackLength(points: Vector3[]): number {
