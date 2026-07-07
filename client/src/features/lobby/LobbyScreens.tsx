@@ -465,7 +465,7 @@ export function LobbyScreen() {
                 </div>
               }>
                 <VehiclePreview
-                  key={`${myPlayer.vehicleId}-${myPlayer.vehicleColor}`}
+                  key={myPlayer.vehicleId}
                   vehicleId={myPlayer.vehicleId}
                   color={myPlayer.vehicleColor}
                   className="h-56 lg:h-64 md:h-64"

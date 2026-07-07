@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
 import { GLB_VEHICLE_CONFIGS } from './glbVehicleConfigs';
@@ -48,10 +48,12 @@ function tuneMaterial(
     mat.metalnessMap = null;
     mat.roughnessMap = null;
     mat.envMapIntensity = 1;
+    if (mat.map) mat.map = null;
   }
 }
 
 function fixWheelPivot(mesh: THREE.Mesh) {
+  mesh.geometry = mesh.geometry.clone();
   mesh.geometry.computeBoundingBox();
   const center = new THREE.Vector3();
   mesh.geometry.boundingBox!.getCenter(center);
@@ -65,21 +67,25 @@ function getMeshRole(
 ): 'body' | 'glass' | 'wheel' | 'default' {
   if (config.isGlass?.(name)) return 'glass';
   if (config.isWheel?.(name)) return 'wheel';
-  if (config.paintMesh?.(name)) return 'body';
-  if (!config.paintMesh && !config.isWheel && !config.isGlass) return 'body';
-  return 'default';
+  if (config.paintMesh) {
+    return config.paintMesh(name) ? 'body' : 'default';
+  }
+  return 'body';
 }
 
 function GLBModel({ vehicleId, color }: GLBVehicleMeshProps) {
   const config = GLB_VEHICLE_CONFIGS[vehicleId];
   const { scene } = useGLTF(config.path);
+  const bodyMaterialsRef = useRef<THREE.MeshStandardMaterial[]>([]);
 
   const { model, scale, offset } = useMemo(() => {
     const cloned = scene.clone(true);
+    const bodyMaterials: THREE.MeshStandardMaterial[] = [];
 
     cloned.traverse((obj) => {
       if (!(obj instanceof THREE.Mesh)) return;
 
+      obj.geometry = obj.geometry.clone();
       obj.castShadow = true;
       obj.receiveShadow = true;
 
@@ -94,6 +100,9 @@ function GLBModel({ vehicleId, color }: GLBVehicleMeshProps) {
         let effectiveRole = role;
         if (vehicleId === 'bicycle' && /black/i.test(mat.name)) effectiveRole = 'wheel';
         tuneMaterial(next, color, effectiveRole);
+        if (effectiveRole === 'body' && isPBRMaterial(next)) {
+          bodyMaterials.push(next);
+        }
         return next;
       });
       obj.material = Array.isArray(obj.material) ? tuned : tuned[0];
@@ -107,12 +116,20 @@ function GLBModel({ vehicleId, color }: GLBVehicleMeshProps) {
     box.getSize(size);
     const maxDim = Math.max(size.x, size.y, size.z);
 
+    bodyMaterialsRef.current = bodyMaterials;
+
     return {
       model: cloned,
       scale: config.targetSize / maxDim,
       offset: [-center.x, -box.min.y, -center.z] as [number, number, number],
     };
-  }, [scene, color, config]);
+  }, [scene, config, vehicleId]);
+
+  useEffect(() => {
+    for (const mat of bodyMaterialsRef.current) {
+      mat.color.set(color);
+    }
+  }, [color]);
 
   return (
     <group scale={scale}>
