@@ -26,16 +26,20 @@ export function RaceHUD() {
   const setResults = useRaceStore((s) => s.setResults);
   const setDistanceRemaining = useRaceStore((s) => s.setDistanceRemaining);
   const lobby = useLobbyStore((s) => s.lobby);
+  const localPlayerId = useLobbyStore((s) => s.localPlayerId);
+  const selectedVehicleId = useLobbyStore((s) => s.selectedVehicleId);
+  const selectedVehicleColor = useLobbyStore((s) => s.selectedVehicleColor);
   const race = useRaceStore((s) => s.race);
   const profile = useAuthStore((s) => s.profile);
   const navigate = useNavigate();
 
   const mapId = race?.mapId || lobby?.settings.mapId || DEFAULT_MAP_ID;
   const map = getMapById(mapId);
-  const myRacePlayer = race?.players.find((p) => p.playerId === profile.id);
-  const myLobbyPlayer = lobby?.players.find((p) => p.id === profile.id);
-  const vehicleId = myRacePlayer?.vehicleId || myLobbyPlayer?.vehicleId || profile.favoriteVehicle;
-  const vehicleColor = myRacePlayer?.vehicleColor || myLobbyPlayer?.vehicleColor || '#FF9933';
+  const playerId = localPlayerId || profile.id;
+  const myRacePlayer = race?.players.find((p) => p.playerId === playerId);
+  const myLobbyPlayer = lobby?.players.find((p) => p.id === playerId);
+  const vehicleId = myRacePlayer?.vehicleId || myLobbyPlayer?.vehicleId || selectedVehicleId || profile.favoriteVehicle;
+  const vehicleColor = myRacePlayer?.vehicleColor || myLobbyPlayer?.vehicleColor || selectedVehicleColor || '#FF9933';
   const isSolo = !race || race.players.length < 2;
   const [elapsedMs, setElapsedMs] = useState(0);
 
@@ -90,6 +94,7 @@ export function RaceHUD() {
     <div className="relative w-full h-screen">
       <Suspense fallback={<div className="w-full h-screen flex items-center justify-center bg-game-dark"><LoadingSpinner message="Loading race..." /></div>}>
         <GameScene
+          key={`${vehicleId}-${vehicleColor}`}
           vehicleId={vehicleId}
           vehicleColor={vehicleColor}
           mapId={mapId}

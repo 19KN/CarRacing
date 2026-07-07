@@ -85,10 +85,23 @@ interface LobbyState {
   gamingId: string;
   chat: ChatMessage[];
   isHost: boolean;
+  localPlayerId: string;
+  selectedVehicleId: string;
+  selectedVehicleColor: string;
   setLobby: (lobby: Lobby | null) => void;
   setGamingId: (id: string) => void;
   addChat: (msg: ChatMessage) => void;
+  updateMySelection: (vehicleId?: string, vehicleColor?: string) => void;
   reset: () => void;
+}
+
+function resolveLocalPlayerId(lobby: Lobby | null): string {
+  const auth = useAuthStore.getState().profile;
+  if (!lobby) return auth.id;
+  const byId = lobby.players.find((p) => p.id === auth.id);
+  if (byId) return byId.id;
+  const byName = lobby.players.find((p) => p.username === auth.username);
+  return byName?.id ?? auth.id;
 }
 
 export const useLobbyStore = create<LobbyState>((set, get) => ({
@@ -96,14 +109,56 @@ export const useLobbyStore = create<LobbyState>((set, get) => ({
   gamingId: '',
   chat: [],
   isHost: false,
-  setLobby: (lobby) => set({
-    lobby,
-    chat: lobby?.chat || [],
-    isHost: lobby?.players.some((p) => p.isHost && p.id === useAuthStore.getState().profile.id) || false,
-  }),
+  localPlayerId: '',
+  selectedVehicleId: DEFAULT_VEHICLE_ID,
+  selectedVehicleColor: '#FF9933',
+  setLobby: (lobby) => {
+    const localPlayerId = resolveLocalPlayerId(lobby);
+    const me = lobby?.players.find((p) => p.id === localPlayerId);
+    set({
+      lobby,
+      chat: lobby?.chat || [],
+      isHost: lobby?.players.some((p) => p.isHost && p.id === localPlayerId) || false,
+      localPlayerId,
+      selectedVehicleId: me?.vehicleId ?? get().selectedVehicleId,
+      selectedVehicleColor: me?.vehicleColor ?? get().selectedVehicleColor,
+    });
+  },
   setGamingId: (id) => set({ gamingId: id }),
   addChat: (msg) => set({ chat: [...get().chat, msg] }),
-  reset: () => set({ lobby: null, gamingId: '', chat: [], isHost: false }),
+  updateMySelection: (vehicleId, vehicleColor) => {
+    const { lobby, localPlayerId } = get();
+    const playerId = localPlayerId || useAuthStore.getState().profile.id;
+    const nextVehicleId = vehicleId ?? get().selectedVehicleId;
+    const nextColor = vehicleColor ?? get().selectedVehicleColor;
+    set({
+      selectedVehicleId: nextVehicleId,
+      selectedVehicleColor: nextColor,
+      lobby: lobby
+        ? {
+            ...lobby,
+            players: lobby.players.map((p) => (
+              p.id === playerId
+                ? {
+                    ...p,
+                    vehicleId: vehicleId ?? p.vehicleId,
+                    vehicleColor: vehicleColor ?? p.vehicleColor,
+                  }
+                : p
+            )),
+          }
+        : lobby,
+    });
+  },
+  reset: () => set({
+    lobby: null,
+    gamingId: '',
+    chat: [],
+    isHost: false,
+    localPlayerId: '',
+    selectedVehicleId: DEFAULT_VEHICLE_ID,
+    selectedVehicleColor: '#FF9933',
+  }),
 }));
 
 interface RaceStateStore {

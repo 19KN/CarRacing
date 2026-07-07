@@ -2,6 +2,24 @@ import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore, useLobbyStore, useRaceStore } from '../stores';
 import { initSocketListeners, joinLobbySocket } from '../utils/socket';
+import type { RaceState } from '@indian-racing/shared';
+
+function applyLobbySelectionsToRace(race: RaceState, lobby: ReturnType<typeof useLobbyStore.getState>['lobby']): RaceState {
+  if (!lobby) return race;
+  return {
+    ...race,
+    players: race.players.map((rp) => {
+      const lp = lobby.players.find((p) => p.id === rp.playerId);
+      if (!lp) return rp;
+      return {
+        ...rp,
+        vehicleId: lp.vehicleId,
+        vehicleColor: lp.vehicleColor,
+        username: lp.username,
+      };
+    }),
+  };
+}
 
 export function SocketSync() {
   const navigate = useNavigate();
@@ -25,7 +43,14 @@ export function SocketSync() {
         setCountdown(value);
       },
       onRaceStart: (race) => {
-        setRace(race);
+        const lobby = useLobbyStore.getState().lobby;
+        const mergedRace = applyLobbySelectionsToRace(race, lobby);
+        const me = lobby?.players.find((p) => p.id === useLobbyStore.getState().localPlayerId)
+          ?? lobby?.players.find((p) => p.username === useAuthStore.getState().profile.username);
+        if (me) {
+          useLobbyStore.getState().updateMySelection(me.vehicleId, me.vehicleColor);
+        }
+        setRace(mergedRace);
         setCountdown(null);
         navigate('/race');
       },

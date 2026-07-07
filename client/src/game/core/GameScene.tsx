@@ -20,7 +20,7 @@ import { useVehicleControls } from '../core/controls';
 import { createVehiclePhysics } from '../physics/vehiclePhysics';
 import { useAudioManager } from '../audio/AudioManager';
 import { useNetworkSync, RemotePlayer } from '../network/NetworkSync';
-import { useAuthStore, useRaceStore, useSettingsStore } from '../../stores';
+import { useAuthStore, useRaceStore, useLobbyStore, useSettingsStore } from '../../stores';
 import { getSocket, SocketEvents } from '../../utils/socket';
 import { CameraMode } from '@indian-racing/shared';
 
@@ -42,6 +42,7 @@ function PlayerVehicle({
   const groupRef = useRef<THREE.Group>(null);
   const config = getVehicleById(vehicleId) || getVehicleById(DEFAULT_VEHICLE_ID)!;
   const physics = useRef(createVehiclePhysics(config));
+  const activeVehicleId = useRef(vehicleId);
   const { inputRef, hornRef, nitroRef } = useVehicleControls();
   const { indexRef } = useCameraSwitcher();
   const [cameraMode, setCameraMode] = useState<CameraMode>('thirdPerson');
@@ -70,6 +71,11 @@ function PlayerVehicle({
   useNetworkSync(posRef, rotRef, velRef, !isSolo);
 
   useEffect(() => {
+    if (activeVehicleId.current !== vehicleId) {
+      activeVehicleId.current = vehicleId;
+      const nextConfig = getVehicleById(vehicleId) || getVehicleById(DEFAULT_VEHICLE_ID)!;
+      physics.current = createVehiclePhysics(nextConfig);
+    }
     physics.current.setPosition(spawnPosition.x, spawnPosition.y, spawnPosition.z, spawnPosition.rotation);
     if (groupRef.current) {
       groupRef.current.position.set(spawnPosition.x, spawnPosition.y, spawnPosition.z);
@@ -84,7 +90,7 @@ function PlayerVehicle({
     };
     window.addEventListener('keydown', handleKey);
     return () => { stopEngine(); window.removeEventListener('keydown', handleKey); };
-  }, []);
+  }, [spawnPosition.x, spawnPosition.y, spawnPosition.z, spawnPosition.rotation, vehicleId]);
 
   useFrame((_, delta) => {
     if (useRaceStore.getState().isRaceFinished) return;
@@ -254,7 +260,7 @@ function PlayerVehicle({
 
   return (
     <group ref={groupRef}>
-      <VehicleMesh config={config} color={vehicleColor} />
+      <VehicleMesh key={vehicleId} config={config} color={vehicleColor} />
       <SmokeParticles active={health < 50 && health > 0} position={[0, 0.5, -1]} />
       {!isSolo && <PlayerNameLabel name={username} isLocal />}
     </group>
@@ -277,14 +283,16 @@ function GameWorld({
   const timeOfDay = useRaceStore((s) => s.timeOfDay) as 'morning' | 'afternoon' | 'evening' | 'night' | 'sunrise' | 'sunset';
   const race = useRaceStore((s) => s.race);
   const playerId = useAuthStore((s) => s.profile.id);
+  const localPlayerId = useLobbyStore((s) => s.localPlayerId);
   const username = useAuthStore((s) => s.profile.username);
   const [signalState, setSignalState] = useState<'red' | 'yellow' | 'green'>('green');
   const isMultiplayer = (race?.players.length ?? 0) >= 2;
-  const myRacePlayer = race?.players.find((p) => p.playerId === playerId);
+  const resolvedPlayerId = localPlayerId || playerId;
+  const myRacePlayer = race?.players.find((p) => p.playerId === resolvedPlayerId);
   const spawnPosition = myRacePlayer
     ? { x: myRacePlayer.position.x, y: myRacePlayer.position.y, z: myRacePlayer.position.z, rotation: myRacePlayer.rotation }
     : { x: PLAYER_LANE_X, y: 0.5, z: RACE_START_Z, rotation: Math.PI };
-  const otherPlayers = race?.players.filter((p) => p.playerId !== playerId) ?? [];
+  const otherPlayers = race?.players.filter((p) => p.playerId !== resolvedPlayerId) ?? [];
 
   useEffect(() => {
     const socket = getSocket();

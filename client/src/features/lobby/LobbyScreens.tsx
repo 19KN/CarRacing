@@ -188,6 +188,8 @@ export function LobbyScreen() {
   const chat = useLobbyStore((s) => s.chat);
   const addChat = useLobbyStore((s) => s.addChat);
   const resetLobby = useLobbyStore((s) => s.reset);
+  const updateMySelection = useLobbyStore((s) => s.updateMySelection);
+  const localPlayerId = useLobbyStore((s) => s.localPlayerId);
   const profile = useAuthStore((s) => s.profile);
   const countdown = useRaceStore((s) => s.countdown);
   const [message, setMessage] = useState('');
@@ -214,7 +216,7 @@ export function LobbyScreen() {
 
   if (!lobby) return null;
 
-  const myPlayer = lobby.players.find((p) => p.id === profile.id);
+  const myPlayer = lobby.players.find((p) => p.id === (localPlayerId || profile.id));
   const isHost = myPlayer?.isHost;
   const readyCount = lobby.players.filter((p) => p.isReady).length;
   const allReady = lobby.players.length >= 2 && lobby.players.every((p) => p.isReady);
@@ -252,10 +254,12 @@ export function LobbyScreen() {
   };
 
   const selectVehicle = (vehicleId: string) => {
+    updateMySelection(vehicleId, undefined);
     getSocket().emit(SocketEvents.SELECT_VEHICLE, { vehicleId });
   };
 
   const selectColor = (color: string) => {
+    updateMySelection(undefined, color);
     getSocket().emit(SocketEvents.SELECT_COLOR, { color });
   };
 
