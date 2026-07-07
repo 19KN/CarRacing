@@ -1,23 +1,15 @@
 import { useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-import {
-  medianRegistry,
-  type MedianObstacle,
-  updatePedestrianJumps,
-  getPedestrianJumpOffset,
-} from './medianCollision';
-import {
-  buildRoadCenterline,
-  buildArcLengthTable,
-  sampleRoadAtDistance,
-  offsetFromRoadSample,
-  type PathPoint,
-} from './roadPath';
-import { MODULAR_TILE_SCALE } from '@indian-racing/shared';
+import { medianRegistry, type MedianObstacle, updatePedestrianJumps, getPedestrianJumpOffset } from './medianCollision';
 
-const SEG_LEN = 28;
-const SIDEWALK_X = MODULAR_TILE_SCALE + 4;
+const SEG_LEN = 40;
+const MEDIAN_W = 3;
+const SHOULDER_W = 2;
+const SIDEWALK_W = 2.5;
+const CARRIAGE_W = 7;
+const TOTAL_ROAD_HALF = CARRIAGE_W + MEDIAN_W / 2 + SHOULDER_W;
+const SIDEWALK_X = TOTAL_ROAD_HALF + SHOULDER_W + SIDEWALK_W / 2;
 
 function seededRandom(seed: number): number {
   const x = Math.sin(seed * 127.1 + 311.7) * 43758.5453;
@@ -112,10 +104,10 @@ function PetDog({ color }: { color: string }) {
 interface Walker {
   id: string;
   type: 'person' | 'pet';
-  roadDistance: number;
-  distMin: number;
-  distMax: number;
-  laneOffsetX: number;
+  x: number;
+  z: number;
+  zMin: number;
+  zMax: number;
   direction: number;
   speed: number;
   shirtColor?: string;
@@ -125,29 +117,18 @@ interface Walker {
 
 interface StaticDecor {
   type: 'tree' | 'pot';
-  roadDistance: number;
-  laneOffsetX: number;
-  localZ: number;
+  x: number;
+  z: number;
   seed: number;
   scale?: number;
 }
 
-export function MedianLife({
-  checkpoints,
-  roadLength,
-}: {
-  checkpoints: PathPoint[];
-  roadLength: number;
-}) {
+export function MedianLife({ roadLength }: { roadLength: number }) {
   const segCount = Math.ceil(roadLength / SEG_LEN);
   const walkersRef = useRef<Walker[]>([]);
   const staticDecorRef = useRef<StaticDecor[]>([]);
   const treeObstaclesRef = useRef<MedianObstacle[]>([]);
   const groupRefs = useRef(new Map<string, THREE.Group>());
-  const decorGroupRefs = useRef(new Map<string, THREE.Group>());
-
-  const centerline = useMemo(() => buildRoadCenterline(checkpoints), [checkpoints]);
-  const arcTable = useMemo(() => buildArcLengthTable(centerline), [centerline]);
 
   useMemo(() => {
     const trees: StaticDecor[] = [];
@@ -155,55 +136,31 @@ export function MedianLife({
     const walkers: Walker[] = [];
 
     for (let i = 0; i < segCount; i++) {
-      const dist = Math.min(roadLength - 20, 60 + i * SEG_LEN);
+      const z = 50 - i * SEG_LEN;
       const seed = i * 11 + 5;
 
       if (i % 2 === 0) {
-        const treeOffsetX = seededRandom(seed) > 0.5 ? -0.55 : 0.55;
-        trees.push({
-          type: 'tree',
-          roadDistance: dist,
-          laneOffsetX: treeOffsetX,
-          localZ: -8,
-          seed,
-          scale: 0.75 + seededRandom(seed) * 0.2,
-        });
+        const treeX = seededRandom(seed) > 0.5 ? -0.5 : 0.5;
+        trees.push({ type: 'tree', x: treeX, z: z - 10, seed, scale: 0.75 + seededRandom(seed) * 0.2 });
         if (i % 4 === 0) {
-          pots.push({
-            type: 'pot',
-            roadDistance: dist,
-            laneOffsetX: -treeOffsetX * 0.55,
-            localZ: -14,
-            seed: seed + 50,
-          });
+          pots.push({ type: 'pot', x: -treeX * 0.6, z: z - 18, seed: seed + 50 });
         }
       }
 
       if (i % 3 === 1) {
-        pots.push({
-          type: 'pot',
-          roadDistance: dist,
-          laneOffsetX: SIDEWALK_X,
-          localZ: -4,
-          seed: seed + 60,
-        });
-        pots.push({
-          type: 'pot',
-          roadDistance: dist + 12,
-          laneOffsetX: -SIDEWALK_X,
-          localZ: -10,
-          seed: seed + 61,
-        });
+        pots.push({ type: 'pot', x: SIDEWALK_X - 0.5, z: z - 5, seed: seed + 60 });
+        pots.push({ type: 'pot', x: -SIDEWALK_X + 0.5, z: z - 22, seed: seed + 61 });
       }
 
       if (i % 5 === 0) {
+        const zStart = z - 15;
         walkers.push({
           id: `person_l_${i}`,
           type: 'person',
-          roadDistance: dist,
-          distMin: Math.max(40, dist - 18),
-          distMax: Math.min(roadLength - 40, dist + 18),
-          laneOffsetX: -SIDEWALK_X,
+          x: -SIDEWALK_X,
+          z: zStart,
+          zMin: zStart - 18,
+          zMax: zStart + 18,
           direction: seededRandom(seed) > 0.5 ? 1 : -1,
           speed: 1.2 + seededRandom(seed + 1) * 0.8,
           shirtColor: ['#ff9933', '#138808', '#3498db', '#e74c3c', '#9b59b6'][i % 5],
@@ -212,10 +169,10 @@ export function MedianLife({
         walkers.push({
           id: `person_r_${i}`,
           type: 'person',
-          roadDistance: dist + 10,
-          distMin: Math.max(40, dist - 8),
-          distMax: Math.min(roadLength - 40, dist + 28),
-          laneOffsetX: SIDEWALK_X,
+          x: SIDEWALK_X,
+          z: zStart - 8,
+          zMin: zStart - 26,
+          zMax: zStart + 10,
           direction: seededRandom(seed + 3) > 0.5 ? 1 : -1,
           speed: 1 + seededRandom(seed + 4) * 0.6,
           shirtColor: ['#ffffff', '#2c3e50', '#e67e22', '#1abc9c'][i % 4],
@@ -224,13 +181,14 @@ export function MedianLife({
       }
 
       if (i % 4 === 2) {
+        const zStart = z - 12;
         walkers.push({
           id: `dog_l_${i}`,
           type: 'pet',
-          roadDistance: dist,
-          distMin: Math.max(40, dist - 12),
-          distMax: Math.min(roadLength - 40, dist + 12),
-          laneOffsetX: -SIDEWALK_X + 0.8,
+          x: -SIDEWALK_X + 0.8,
+          z: zStart,
+          zMin: zStart - 12,
+          zMax: zStart + 12,
           direction: 1,
           speed: 1.8 + seededRandom(seed) * 0.5,
           petColor: ['#8b6914', '#333', '#c4a35a', '#5a3e1b'][i % 4],
@@ -238,10 +196,10 @@ export function MedianLife({
         walkers.push({
           id: `dog_r_${i}`,
           type: 'pet',
-          roadDistance: dist + 8,
-          distMin: Math.max(40, dist - 4),
-          distMax: Math.min(roadLength - 40, dist + 20),
-          laneOffsetX: SIDEWALK_X - 0.8,
+          x: SIDEWALK_X - 0.8,
+          z: zStart - 6,
+          zMin: zStart - 18,
+          zMax: zStart + 6,
           direction: -1,
           speed: 2 + seededRandom(seed + 1) * 0.4,
           petColor: ['#fff', '#222', '#a0522d'][i % 3],
@@ -252,10 +210,10 @@ export function MedianLife({
         walkers.push({
           id: `person_median_${i}`,
           type: 'person',
-          roadDistance: dist,
-          distMin: Math.max(40, dist - 16),
-          distMax: Math.min(roadLength - 40, dist + 8),
-          laneOffsetX: seededRandom(seed) > 0.5 ? -0.75 : 0.75,
+          x: seededRandom(seed) > 0.5 ? -0.8 : 0.8,
+          z: z - 8,
+          zMin: z - 20,
+          zMax: z + 4,
           direction: -1,
           speed: 0.9,
           shirtColor: '#ff9933',
@@ -268,7 +226,7 @@ export function MedianLife({
     treeObstaclesRef.current = trees.map((t, idx) => ({
       id: `median_tree_${idx}`,
       type: 'tree' as const,
-      position: { x: 0, z: 0 },
+      position: { x: t.x, z: t.z },
       halfWidth: 1.1 * (t.scale ?? 1),
       halfLength: 1.1 * (t.scale ?? 1),
       rotation: 0,
@@ -280,44 +238,25 @@ export function MedianLife({
     updatePedestrianJumps(delta);
     const dynamicObstacles: MedianObstacle[] = [];
 
-    for (const d of staticDecorRef.current) {
-      const sample = sampleRoadAtDistance(centerline, arcTable, d.roadDistance);
-      const world = offsetFromRoadSample(sample, d.laneOffsetX, d.localZ);
-      const g = decorGroupRefs.current.get(`${d.type}-${d.seed}-${d.roadDistance}`);
-      if (g) {
-        g.position.set(world.x, sample.y, world.z);
-        g.rotation.y = sample.rotation;
-      }
-      if (d.type === 'tree') {
-        const treeIdx = staticDecorRef.current.filter((x) => x.type === 'tree').indexOf(d);
-        if (treeIdx >= 0 && treeObstaclesRef.current[treeIdx]) {
-          treeObstaclesRef.current[treeIdx].position = { x: world.x, z: world.z };
-          treeObstaclesRef.current[treeIdx].rotation = sample.rotation;
-        }
-      }
-    }
-
     for (const w of walkersRef.current) {
-      w.roadDistance += w.direction * w.speed * delta;
-      if (w.roadDistance > w.distMax) { w.roadDistance = w.distMax; w.direction = -1; }
-      if (w.roadDistance < w.distMin) { w.roadDistance = w.distMin; w.direction = 1; }
+      w.z += w.direction * w.speed * delta;
+      if (w.z > w.zMax) { w.z = w.zMax; w.direction = -1; }
+      if (w.z < w.zMin) { w.z = w.zMin; w.direction = 1; }
 
-      const sample = sampleRoadAtDistance(centerline, arcTable, w.roadDistance);
-      const world = offsetFromRoadSample(sample, w.laneOffsetX, 0);
       const jumpY = w.type === 'person' ? getPedestrianJumpOffset(w.id) : 0;
       const g = groupRefs.current.get(w.id);
       if (g) {
-        g.position.set(world.x, sample.y + jumpY, world.z);
-        g.rotation.y = sample.rotation + (w.direction > 0 ? 0 : Math.PI);
+        g.position.set(w.x, jumpY, w.z);
+        g.rotation.y = w.direction > 0 ? Math.PI : 0;
       }
 
       dynamicObstacles.push({
         id: w.id,
         type: w.type,
-        position: { x: world.x, z: world.z },
+        position: { x: w.x, z: w.z },
         halfWidth: w.type === 'person' ? 0.35 : 0.4,
         halfLength: w.type === 'person' ? 0.35 : 0.45,
-        rotation: sample.rotation,
+        rotation: w.direction > 0 ? Math.PI : 0,
       });
     }
 
@@ -327,10 +266,7 @@ export function MedianLife({
   return (
     <group>
       {staticDecorRef.current.map((d, i) => (
-        <group
-          key={`${d.type}-${d.seed}-${d.roadDistance}`}
-          ref={(el) => { if (el) decorGroupRefs.current.set(`${d.type}-${d.seed}-${d.roadDistance}`, el); }}
-        >
+        <group key={`${d.type}-${i}`} position={[d.x, 0, d.z]}>
           {d.type === 'tree' ? (
             <MedianTree scale={d.scale} seed={d.seed} />
           ) : (
@@ -342,6 +278,8 @@ export function MedianLife({
         <group
           key={w.id}
           ref={(el) => { if (el) groupRefs.current.set(w.id, el); }}
+          position={[w.x, 0, w.z]}
+          rotation={[0, w.direction > 0 ? Math.PI : 0, 0]}
         >
           {w.type === 'person' ? (
             <Person shirtColor={w.shirtColor!} skinTone={w.skinTone!} />

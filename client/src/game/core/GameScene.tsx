@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect, useMemo, Suspense, memo } from 'react';
+import { useRef, useState, useEffect, Suspense, memo } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { EffectComposer, Bloom, Vignette } from '@react-three/postprocessing';
 import * as THREE from 'three';
@@ -7,8 +7,6 @@ import { getFinishLineZ } from '../../utils/soloRace';
 import { VehicleMesh } from '../vehicles/VehicleMesh';
 import { MapEnvironment } from '../maps/MapEnvironment';
 import { PLAYER_LANE_X } from '../maps/IndianHighwayRoad';
-import { buildRoadCenterline, sampleRoadNearest, buildArcLengthTable } from '../maps/roadPath';
-import { speedBreakerRegistry, findSpeedBreakerHit } from '../maps/speedBreakers';
 import { WeatherSystem } from '../weather/WeatherSystem';
 import { TrafficSystem, trafficRegistry } from '../traffic/TrafficSystem';
 import { findTrafficCollision, getCollisionDamage } from '../traffic/trafficCollision';
@@ -61,17 +59,11 @@ function PlayerVehicle({
   const trafficHitTimes = useRef(new Map<string, number>());
   const playerHitTimes = useRef(new Map<string, number>());
   const medianHitTimes = useRef(new Map<string, number>());
-  const bumpHitTimes = useRef(new Map<string, number>());
   const raceStartZ = useRef(spawnPosition.z);
   const lastDistanceReport = useRef(-1);
   const finishedRef = useRef(false);
   const maxSpeedRef = useRef(0);
   const map = getMapById(mapId) || getMapById(DEFAULT_MAP_ID)!;
-  const centerline = useMemo(
-    () => buildRoadCenterline(map.checkpoints.map((p) => ({ x: p.x, y: p.y, z: p.z }))),
-    [mapId],
-  );
-  const arcTable = useMemo(() => buildArcLengthTable(centerline), [centerline]);
   const totalRaceDistance = getMapRaceDistance(map);
   const finishZ = getFinishLineZ(totalRaceDistance, raceStartZ.current);
 
@@ -104,34 +96,14 @@ function PlayerVehicle({
     if (useRaceStore.getState().isRaceFinished) return;
 
     const health = useRaceStore.getState().health;
-    const roadSample = sampleRoadNearest(centerline, arcTable, posRef.current.x, posRef.current.z);
-    const surfaceY = roadSample.y + 0.5;
-    const state = physics.current.update(inputRef.current, delta, health, surfaceY, roadSample.x);
+    const state = physics.current.update(inputRef.current, delta, health);
     posRef.current = state.position;
     rotRef.current = state.rotation;
     velRef.current = state.velocity;
 
-    const bumpHit = findSpeedBreakerHit(
-      state.position.x,
-      state.position.z,
-      speedBreakerRegistry.breakers,
-    );
-    if (bumpHit && state.speed >= 12) {
-      const now = Date.now();
-      const lastHit = bumpHitTimes.current.get(bumpHit.id) ?? 0;
-      if (now - lastHit > 900) {
-        bumpHitTimes.current.set(bumpHit.id, now);
-        physics.current.applySpeedBump(state.speed);
-        playSound('brake');
-        triggerCollisionFeedback('small', state.speed * 0.55);
-      }
-    }
-
-    const renderState = physics.current.getState();
-
     if (groupRef.current) {
-      groupRef.current.position.set(renderState.position.x, renderState.position.y, renderState.position.z);
-      groupRef.current.rotation.y = renderState.rotation;
+      groupRef.current.position.set(state.position.x, state.position.y, state.position.z);
+      groupRef.current.rotation.y = state.rotation;
     }
 
     speedReportTimer.current += delta;

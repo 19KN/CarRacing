@@ -1,8 +1,15 @@
 import { MapConfig, Vector3 } from './types';
-import { generateF1TrackCheckpoints, estimateTrackLength } from './trackPath';
 
-function generateHighwayCheckpoints(count: number, length: number, curve = 1): Vector3[] {
-  return generateF1TrackCheckpoints(length, 0.85 + curve * 0.12);
+function generateHighwayCheckpoints(count: number, length: number, curve = 0): Vector3[] {
+  const points: Vector3[] = [];
+  for (let i = 0; i < count; i++) {
+    const t = i / (count - 1);
+    const z = -t * length;
+    const x = Math.sin(t * Math.PI * curve) * 200;
+    const y = Math.sin(t * Math.PI * 2) * 5;
+    points.push({ x, y, z });
+  }
+  return points;
 }
 
 function generateScenery(type: MapConfig['scenery'][0]['type'], count: number, spread: number): MapConfig['scenery'] {
@@ -220,7 +227,8 @@ export const MAPS: MapConfig[] = [
 ];
 
 export function getMapRoadLength(map: MapConfig): number {
-  return estimateTrackLength(map.checkpoints) + 200;
+  const last = map.checkpoints[map.checkpoints.length - 1];
+  return Math.abs(last?.z ?? map.distance) + 600;
 }
 
 export function getMapRaceDistance(map: MapConfig): number {
