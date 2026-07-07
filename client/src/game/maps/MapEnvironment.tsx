@@ -1,5 +1,6 @@
 import { MapConfig, getMapRoadLength, getMapRaceDistance } from '@indian-racing/shared';
 import { IndianHighwayRoad } from './IndianHighwayRoad';
+import { MedianLife } from './MedianLife';
 import { FinishLine } from './FinishLine';
 import { getFinishLineZ } from '../../utils/soloRace';
 
@@ -10,6 +11,7 @@ export function MapEnvironment({ map }: { map: MapConfig }) {
   return (
     <group>
       <IndianHighwayRoad points={map.checkpoints} />
+      <MedianLife roadLength={roadLength} />
       <FinishLine z={finishZ} />
 
       {/* Distant hills */}

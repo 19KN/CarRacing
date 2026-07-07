@@ -186,10 +186,18 @@ export function IndianHighwayRoad({ points }: { points: { x: number; y: number; 
               <meshStandardMaterial map={asphaltTex} color="#333" roughness={0.9} side={THREE.DoubleSide} />
             </mesh>
 
-            {/* ── MEDIAN DIVIDER (flat — drivable) ── */}
-            <mesh position={[0, 0.05, 0]} receiveShadow>
-              <boxGeometry args={[MEDIAN_W, 0.1, SEG_LEN]} />
-              <meshStandardMaterial color="#4a4a4a" roughness={0.85} side={THREE.DoubleSide} />
+            {/* ── MEDIAN CEMENT DIVIDER (raised curbs, drivable center gap) ── */}
+            <mesh position={[-(MEDIAN_W / 2 - 0.18), 0.22, 0]} castShadow receiveShadow>
+              <boxGeometry args={[0.36, 0.4, SEG_LEN]} />
+              <meshStandardMaterial map={sidewalkTex} color="#8a8a8a" roughness={0.92} />
+            </mesh>
+            <mesh position={[MEDIAN_W / 2 - 0.18, 0.22, 0]} castShadow receiveShadow>
+              <boxGeometry args={[0.36, 0.4, SEG_LEN]} />
+              <meshStandardMaterial map={sidewalkTex} color="#8a8a8a" roughness={0.92} />
+            </mesh>
+            <mesh position={[0, 0.07, 0]} receiveShadow>
+              <boxGeometry args={[MEDIAN_W - 0.72, 0.1, SEG_LEN]} />
+              <meshStandardMaterial map={sidewalkTex} color="#6e6e6e" roughness={0.88} side={THREE.DoubleSide} />
             </mesh>
             {/* Median center dashes */}
             {Array.from({ length: Math.floor(SEG_LEN / 8) }).map((_, d) => (

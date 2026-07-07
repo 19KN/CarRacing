@@ -11,6 +11,7 @@ import { WeatherSystem } from '../weather/WeatherSystem';
 import { TrafficSystem, trafficRegistry } from '../traffic/TrafficSystem';
 import { findTrafficCollision, getCollisionDamage } from '../traffic/trafficCollision';
 import { findPlayerCollision } from '../network/playerCollision';
+import { medianRegistry, findMedianObstacleCollision, getMedianCollisionDamage } from '../maps/medianCollision';
 import { SmokeParticles } from '../effects/Effects';
 import { PlayerNameLabel } from '../effects/PlayerNameLabel';
 import { triggerCollisionFeedback } from '../effects/collisionFeedback';
@@ -56,6 +57,7 @@ function PlayerVehicle({
   const collisionCooldown = useRef(0);
   const trafficHitTimes = useRef(new Map<string, number>());
   const playerHitTimes = useRef(new Map<string, number>());
+  const medianHitTimes = useRef(new Map<string, number>());
   const raceStartZ = useRef(spawnPosition.z);
   const lastDistanceReport = useRef(-1);
   const finishedRef = useRef(false);
@@ -159,6 +161,10 @@ function PlayerVehicle({
         state.position.z,
         trafficRegistry.vehicles,
       );
+      const medianHit = !hit
+        ? findMedianObstacleCollision(state.position.x, state.position.z, medianRegistry.obstacles)
+        : null;
+
       if (hit) {
         const now = Date.now();
         const lastHit = trafficHitTimes.current.get(hit.id) ?? 0;
@@ -169,6 +175,27 @@ function PlayerVehicle({
           const newHealth = Math.max(0, health - damage);
           useRaceStore.getState().setHealth(newHealth);
           physics.current.applyTrafficCollision(severity, hit.position.x);
+          playCollisionImpact(severity, state.speed);
+          triggerCollisionFeedback(severity, state.speed);
+
+          if (!isSolo) {
+            getSocket().emit(SocketEvents.COLLISION, {
+              playerId: useAuthStore.getState().profile.id,
+              severity,
+              position: { ...state.position },
+            });
+          }
+        }
+      } else if (medianHit) {
+        const now = Date.now();
+        const lastHit = medianHitTimes.current.get(medianHit.id) ?? 0;
+        if (now - lastHit > 1200) {
+          medianHitTimes.current.set(medianHit.id, now);
+          collisionCooldown.current = 0.5;
+          const { severity, damage } = getMedianCollisionDamage(medianHit.type, state.speed);
+          const newHealth = Math.max(0, health - damage);
+          useRaceStore.getState().setHealth(newHealth);
+          physics.current.applyTrafficCollision(severity, medianHit.position.x);
           playCollisionImpact(severity, state.speed);
           triggerCollisionFeedback(severity, state.speed);
 
