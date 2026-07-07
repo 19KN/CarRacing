@@ -30,6 +30,10 @@ const defaultSettings: GameSettings = {
     accelerate: 'KeyW', brake: 'KeyS', steerLeft: 'KeyA', steerRight: 'KeyD',
     handbrake: 'Space', horn: 'KeyH', nitro: 'KeyN', camera: 'KeyC', pause: 'Escape',
   },
+  mobile: {
+    steeringMode: 'wheel',
+    tiltSensitivity: 1.2,
+  },
 };
 
 interface AuthState {
@@ -66,6 +70,7 @@ interface SettingsState {
   updateGraphics: (g: Partial<GameSettings['graphics']>) => void;
   updateAudio: (a: Partial<GameSettings['audio']>) => void;
   updateControls: (c: Partial<GameSettings['controls']>) => void;
+  updateMobile: (m: Partial<NonNullable<GameSettings['mobile']>>) => void;
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -75,6 +80,12 @@ export const useSettingsStore = create<SettingsState>()(
       updateGraphics: (g) => set({ settings: { ...get().settings, graphics: { ...get().settings.graphics, ...g } } }),
       updateAudio: (a) => set({ settings: { ...get().settings, audio: { ...get().settings.audio, ...a } } }),
       updateControls: (c) => set({ settings: { ...get().settings, controls: { ...get().settings.controls, ...c } } }),
+      updateMobile: (m) => set({
+        settings: {
+          ...get().settings,
+          mobile: { ...defaultSettings.mobile!, ...get().settings.mobile, ...m },
+        },
+      }),
     }),
     { name: 'indian-racing-settings' },
   ),

@@ -246,4 +246,8 @@ export interface GameSettings {
     camera: string;
     pause: string;
   };
+  mobile?: {
+    steeringMode: 'wheel' | 'tilt';
+    tiltSensitivity: number;
+  };
 }
