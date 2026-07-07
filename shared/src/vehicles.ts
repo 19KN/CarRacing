@@ -191,6 +191,16 @@ export const VEHICLES: VehicleConfig[] = [
     unlockCost: 900,
     description: 'Versatile pickup for all terrains',
   },
+  {
+    id: 'cruise_ship',
+    name: 'Cruise Ship',
+    category: 'special',
+    stats: { maxSpeed: 90, acceleration: 12, handling: 20, weight: 50000, brakePower: 40, health: 100 },
+    modelKey: 'cruise_ship',
+    sounds: { engine: 'ship_engine', horn: 'horn_ship', brake: 'brake_heavy', collision: 'hit_heavy', skid: 'skid_heavy' },
+    unlockCost: 0,
+    description: 'Massive luxury cruise ship — yes, on the highway',
+  },
 ];
 
 export const DEFAULT_VEHICLE_ID = 'hatchback';

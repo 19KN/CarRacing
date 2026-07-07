@@ -13,6 +13,7 @@ interface VehiclePreviewProps {
 function PreviewScene({ vehicleId, color }: VehiclePreviewProps) {
   const config = getVehicleById(vehicleId);
   if (!config) return null;
+  const isCruiseShip = vehicleId === 'cruise_ship';
 
   return (
     <>
@@ -21,7 +22,7 @@ function PreviewScene({ vehicleId, color }: VehiclePreviewProps) {
       <directionalLight position={[5, 10, 5]} intensity={1.6} castShadow />
       <directionalLight position={[-4, 6, -3]} intensity={0.7} />
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, 0]} receiveShadow>
-        <circleGeometry args={[5, 48]} />
+        <circleGeometry args={[isCruiseShip ? 8 : 5, 48]} />
         <meshStandardMaterial color="#2a2a3e" roughness={0.85} metalness={0.1} />
       </mesh>
       <group position={[0, 0, 0]} rotation={[0, -0.4, 0]}>
@@ -34,16 +35,17 @@ function PreviewScene({ vehicleId, color }: VehiclePreviewProps) {
         maxPolarAngle={Math.PI / 2.2}
         autoRotate
         autoRotateSpeed={1}
-        target={[0, 0.45, 0]}
+        target={[0, isCruiseShip ? 1.8 : 0.45, 0]}
       />
     </>
   );
 }
 
 export function VehiclePreview({ vehicleId, color, className }: VehiclePreviewProps) {
+  const isCruiseShip = vehicleId === 'cruise_ship';
   return (
     <div className={`w-full h-64 md:h-80 rounded-xl overflow-hidden bg-gradient-to-b from-[#1a1a2e] to-game-dark border border-game-border ${className ?? ''}`}>
-      <Canvas camera={{ position: [4, 1.4, 5], fov: 42 }} shadows>
+      <Canvas camera={{ position: isCruiseShip ? [10, 4, 10] : [4, 1.4, 5], fov: isCruiseShip ? 48 : 42 }} shadows>
         <Suspense fallback={null}>
           <PreviewScene vehicleId={vehicleId} color={color} />
         </Suspense>

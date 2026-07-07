@@ -109,7 +109,15 @@ function GLBModel({ vehicleId, color }: GLBVehicleMeshProps) {
     });
 
     cloned.updateMatrixWorld(true);
-    const box = new THREE.Box3().setFromObject(cloned);
+
+    const oriented = new THREE.Group();
+    oriented.add(cloned);
+    if (config.modelRotation) {
+      oriented.rotation.set(...config.modelRotation);
+    }
+    oriented.updateMatrixWorld(true);
+
+    const box = new THREE.Box3().setFromObject(oriented);
     const center = new THREE.Vector3();
     const size = new THREE.Vector3();
     box.getCenter(center);
@@ -119,7 +127,7 @@ function GLBModel({ vehicleId, color }: GLBVehicleMeshProps) {
     bodyMaterialsRef.current = bodyMaterials;
 
     return {
-      model: cloned,
+      model: oriented,
       scale: config.targetSize / maxDim,
       offset: [-center.x, -box.min.y, -center.z] as [number, number, number],
     };

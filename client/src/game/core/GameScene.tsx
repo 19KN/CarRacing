@@ -11,6 +11,7 @@ import { WeatherSystem } from '../weather/WeatherSystem';
 import { TrafficSystem, trafficRegistry } from '../traffic/TrafficSystem';
 import { findTrafficCollision, getCollisionDamage } from '../traffic/trafficCollision';
 import { findPlayerCollision } from '../network/playerCollision';
+import { detectPlayerOvertake } from '../network/playerOvertake';
 import { medianRegistry, findMedianObstacleCollision, getMedianCollisionDamage, triggerPedestrianJump } from '../maps/medianCollision';
 import { SmokeParticles } from '../effects/Effects';
 import { PlayerNameLabel } from '../effects/PlayerNameLabel';
@@ -47,18 +48,20 @@ function PlayerVehicle({
   const { indexRef } = useCameraSwitcher();
   const [cameraMode, setCameraMode] = useState<CameraMode>('thirdPerson');
   const health = useRaceStore((s) => s.health);
-  const { playEngine, playSound, playCollisionImpact, playCelebration, stopEngine } = useAudioManager();
+  const { playEngine, playSound, playCollisionImpact, playCelebration, stopEngine, playOvertakeSound } = useAudioManager();
   const posRef = useRef({ x: spawnPosition.x, y: spawnPosition.y, z: spawnPosition.z });
   const rotRef = useRef(spawnPosition.rotation);
   const velRef = useRef({ x: 0, y: 0, z: 0 });
   const checkpointRef = useRef(0);
   const hornCooldown = useRef(0);
+  const prevHornRef = useRef(false);
   const lastSpeedReport = useRef(0);
   const speedReportTimer = useRef(0);
   const collisionCooldown = useRef(0);
   const trafficHitTimes = useRef(new Map<string, number>());
   const playerHitTimes = useRef(new Map<string, number>());
   const medianHitTimes = useRef(new Map<string, number>());
+  const remotePlayerSides = useRef(new Map<string, 'behind' | 'ahead' | 'unknown'>());
   const raceStartZ = useRef(spawnPosition.z);
   const lastDistanceReport = useRef(-1);
   const finishedRef = useRef(false);
@@ -146,11 +149,13 @@ function PlayerVehicle({
       inputRef.current.brake,
     );
 
-    if (hornRef.current && hornCooldown.current <= 0) {
+    const hornPressed = hornRef.current;
+    if (hornPressed && !prevHornRef.current && hornCooldown.current <= 0) {
       playSound('horn');
-      hornCooldown.current = 0.5;
+      hornCooldown.current = 4;
       if (!isSolo) getSocket().emit(SocketEvents.HORN);
     }
+    prevHornRef.current = hornPressed;
     hornCooldown.current -= delta;
 
     if (nitroRef.current) {
@@ -159,6 +164,19 @@ function PlayerVehicle({
     }
 
     if (state.isDrifting) playSound('skid');
+
+    if (!isSolo) {
+      const remotePlayers = useRaceStore.getState().remotePlayers;
+      const overtakenBy = detectPlayerOvertake(
+        state.position.x,
+        state.position.z,
+        remotePlayers,
+        remotePlayerSides.current,
+      );
+      if (overtakenBy) {
+        playOvertakeSound();
+      }
+    }
 
     collisionCooldown.current = Math.max(0, collisionCooldown.current - delta);
     if (collisionCooldown.current <= 0 && state.speed > 3) {

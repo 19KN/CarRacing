@@ -2,6 +2,7 @@ import { useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { medianRegistry, type MedianObstacle, updatePedestrianJumps, getPedestrianJumpOffset } from './medianCollision';
+import { PedestrianMesh } from '../characters/PedestrianMesh';
 
 const SEG_LEN = 40;
 const MEDIAN_W = 3;
@@ -55,29 +56,6 @@ function FlowerPot({ seed = 0 }: { seed?: number }) {
   );
 }
 
-function Person({ shirtColor, skinTone }: { shirtColor: string; skinTone: string }) {
-  return (
-    <group>
-      <mesh position={[0, 0.85, 0]} castShadow>
-        <capsuleGeometry args={[0.18, 0.55, 4, 8]} />
-        <meshStandardMaterial color={shirtColor} />
-      </mesh>
-      <mesh position={[0, 1.55, 0]} castShadow>
-        <sphereGeometry args={[0.2, 8, 8]} />
-        <meshStandardMaterial color={skinTone} />
-      </mesh>
-      <mesh position={[-0.12, 0.35, 0]}>
-        <capsuleGeometry args={[0.07, 0.35, 3, 6]} />
-        <meshStandardMaterial color="#333" />
-      </mesh>
-      <mesh position={[0.12, 0.35, 0]}>
-        <capsuleGeometry args={[0.07, 0.35, 3, 6]} />
-        <meshStandardMaterial color="#333" />
-      </mesh>
-    </group>
-  );
-}
-
 function PetDog({ color }: { color: string }) {
   return (
     <group rotation={[0, Math.PI / 2, 0]}>
@@ -111,7 +89,6 @@ interface Walker {
   direction: number;
   speed: number;
   shirtColor?: string;
-  skinTone?: string;
   petColor?: string;
 }
 
@@ -164,7 +141,6 @@ export function MedianLife({ roadLength }: { roadLength: number }) {
           direction: seededRandom(seed) > 0.5 ? 1 : -1,
           speed: 1.2 + seededRandom(seed + 1) * 0.8,
           shirtColor: ['#ff9933', '#138808', '#3498db', '#e74c3c', '#9b59b6'][i % 5],
-          skinTone: seededRandom(seed + 2) > 0.5 ? '#c68642' : '#8d5524',
         });
         walkers.push({
           id: `person_r_${i}`,
@@ -176,7 +152,6 @@ export function MedianLife({ roadLength }: { roadLength: number }) {
           direction: seededRandom(seed + 3) > 0.5 ? 1 : -1,
           speed: 1 + seededRandom(seed + 4) * 0.6,
           shirtColor: ['#ffffff', '#2c3e50', '#e67e22', '#1abc9c'][i % 4],
-          skinTone: seededRandom(seed + 5) > 0.5 ? '#d4a574' : '#6b4423',
         });
       }
 
@@ -217,7 +192,6 @@ export function MedianLife({ roadLength }: { roadLength: number }) {
           direction: -1,
           speed: 0.9,
           shirtColor: '#ff9933',
-          skinTone: '#c68642',
         });
       }
     }
@@ -282,7 +256,7 @@ export function MedianLife({ roadLength }: { roadLength: number }) {
           rotation={[0, w.direction > 0 ? Math.PI : 0, 0]}
         >
           {w.type === 'person' ? (
-            <Person shirtColor={w.shirtColor!} skinTone={w.skinTone!} />
+            <PedestrianMesh color={w.shirtColor!} />
           ) : (
             <PetDog color={w.petColor!} />
           )}

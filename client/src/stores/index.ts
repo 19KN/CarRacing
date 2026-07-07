@@ -15,7 +15,7 @@ const defaultProfile: PlayerProfile = {
   coins: 500,
   xp: 0,
   level: 1,
-  unlockedVehicles: ['bicycle', 'scooter', 'hatchback'],
+  unlockedVehicles: ['bicycle', 'scooter', 'hatchback', 'cruise_ship'],
   unlockedColors: ['#FF9933', '#FFFFFF', '#138808'],
   unlockedHorns: ['default'],
   unlockedSkins: ['default'],

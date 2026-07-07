@@ -6,6 +6,7 @@ import { VEHICLES, VEHICLE_COLORS, getVehicleById } from '@indian-racing/shared'
 import { VehiclePreview } from './VehiclePreview';
 
 function vehicleIcon(category: string, id: string) {
+  if (id === 'cruise_ship') return '🚢';
   if (category === 'two_wheeler') return '🏍️';
   if (category === 'commercial') return '🚛';
   if (id === 'jeep') return '🛻';

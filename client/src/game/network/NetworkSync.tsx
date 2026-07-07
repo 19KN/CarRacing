@@ -3,6 +3,7 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { getVehicleById, DEFAULT_VEHICLE_ID } from '@indian-racing/shared';
 import { getSocket, SocketEvents } from '../../utils/socket';
+import { audioManager } from '../audio/AudioManager';
 import { useAuthStore, useRaceStore, useLobbyStore } from '../../stores';
 import { VehicleMesh } from '../vehicles/VehicleMesh';
 import { PlayerNameLabel } from '../effects/PlayerNameLabel';
@@ -14,6 +15,7 @@ export function useNetworkSync(
   enabled = true,
 ) {
   const lastSent = useRef(0);
+  const prevRank = useRef<number | null>(null);
   const playerId = useLobbyStore((s) => s.localPlayerId) || useAuthStore((s) => s.profile.id);
   const updateRemote = useRaceStore((s) => s.updateRemotePlayer);
   const setRankings = useRaceStore((s) => s.setRankings);
@@ -39,7 +41,13 @@ export function useNetworkSync(
     }) => {
       setRankings(data.rankings);
       const me = data.rankings.find((r) => r.playerId === playerId);
-      if (me) setPosition(me.rank);
+      if (me) {
+        if (prevRank.current !== null && me.rank > prevRank.current) {
+          audioManager.playOvertakeSound();
+        }
+        prevRank.current = me.rank;
+        setPosition(me.rank);
+      }
     };
 
     const onHealthUpdate = (data: { playerId: string; health: number }) => {

@@ -6,6 +6,7 @@ import { apiFetch } from '../../utils/api';
 import { connectSocket, joinLobbySocket, leaveLobbySocket, getSocket, SocketEvents } from '../../utils/socket';
 import { VEHICLES, VEHICLE_COLORS, MAPS, MaxPlayers, DEFAULT_MAP_ID } from '@indian-racing/shared';
 import { copyToClipboard } from '../../utils/progression';
+import { useAudioManager } from '../../game/audio/AudioManager';
 
 const VehiclePreview = lazy(() => import('../garage/VehiclePreview').then((m) => ({ default: m.VehiclePreview })));
 
@@ -192,6 +193,7 @@ export function LobbyScreen() {
   const localPlayerId = useLobbyStore((s) => s.localPlayerId);
   const profile = useAuthStore((s) => s.profile);
   const countdown = useRaceStore((s) => s.countdown);
+  const { playLobbyMusic, stopLobbyMusic } = useAudioManager();
   const [message, setMessage] = useState('');
   const [copied, setCopied] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
@@ -209,6 +211,16 @@ export function LobbyScreen() {
       socket.off(SocketEvents.CHAT);
     };
   }, [lobby?.gamingId]);
+
+  useEffect(() => {
+    if (!lobby || countdown !== null) {
+      stopLobbyMusic();
+      return;
+    }
+
+    playLobbyMusic();
+    return () => stopLobbyMusic();
+  }, [lobby?.gamingId, countdown, playLobbyMusic, stopLobbyMusic]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -264,6 +276,7 @@ export function LobbyScreen() {
   };
 
   const handleLeave = () => {
+    stopLobbyMusic();
     leaveLobbySocket();
     resetLobby();
     navigate('/menu');

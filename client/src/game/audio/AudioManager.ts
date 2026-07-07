@@ -14,10 +14,30 @@ interface EngineSynth {
   outputGain: GainNode;
 }
 
+const HORN_AUDIO_URL = '/assets/audio/horn.mp3';
+const LOBBY_MUSIC_URL = '/assets/audio/lobby-music.mp3';
+const OVERTAKE_AUDIO_URL = '/assets/audio/overtake.mp3';
+const CELEBRATION_AUDIO_URL = '/assets/audio/celebration.mp3';
+
 class AudioManager {
   private ctx: AudioContext | null = null;
   private masterGain: GainNode | null = null;
   private engine: EngineSynth | null = null;
+  private hornBuffer: AudioBuffer | null = null;
+  private hornLoadPromise: Promise<void> | null = null;
+  private activeHornSource: AudioBufferSourceNode | null = null;
+  private lobbyMusicBuffer: AudioBuffer | null = null;
+  private lobbyMusicLoadPromise: Promise<void> | null = null;
+  private lobbyMusicSource: AudioBufferSourceNode | null = null;
+  private lobbyMusicGain: GainNode | null = null;
+  private lobbyMusicPlaying = false;
+  private overtakeBuffer: AudioBuffer | null = null;
+  private overtakeLoadPromise: Promise<void> | null = null;
+  private activeOvertakeSource: AudioBufferSourceNode | null = null;
+  private overtakeCooldownUntil = 0;
+  private celebrationBuffer: AudioBuffer | null = null;
+  private celebrationLoadPromise: Promise<void> | null = null;
+  private activeCelebrationSource: AudioBufferSourceNode | null = null;
   private volumes: Record<string, number> = {
     engine: 0.7, ambient: 0.5, ui: 0.6, master: 0.8,
   };
@@ -28,6 +48,244 @@ class AudioManager {
     this.masterGain = this.ctx.createGain();
     this.masterGain.connect(this.ctx.destination);
     this.masterGain.gain.value = this.volumes.master;
+    void this.loadHornBuffer();
+    void this.loadLobbyMusicBuffer();
+    void this.loadOvertakeBuffer();
+    void this.loadCelebrationBuffer();
+  }
+
+  private async loadCelebrationBuffer() {
+    if (!this.ctx || this.celebrationBuffer || this.celebrationLoadPromise) {
+      return this.celebrationLoadPromise ?? undefined;
+    }
+
+    this.celebrationLoadPromise = (async () => {
+      try {
+        const response = await fetch(CELEBRATION_AUDIO_URL);
+        if (!response.ok) return;
+        const data = await response.arrayBuffer();
+        if (!this.ctx) return;
+        this.celebrationBuffer = await this.ctx.decodeAudioData(data);
+      } catch {
+        // Fall back to synthetic celebration if the asset fails to load
+      }
+    })();
+
+    return this.celebrationLoadPromise;
+  }
+
+  private async loadOvertakeBuffer() {
+    if (!this.ctx || this.overtakeBuffer || this.overtakeLoadPromise) {
+      return this.overtakeLoadPromise ?? undefined;
+    }
+
+    this.overtakeLoadPromise = (async () => {
+      try {
+        const response = await fetch(OVERTAKE_AUDIO_URL);
+        if (!response.ok) return;
+        const data = await response.arrayBuffer();
+        if (!this.ctx) return;
+        this.overtakeBuffer = await this.ctx.decodeAudioData(data);
+      } catch {
+        // Overtake sound is optional
+      }
+    })();
+
+    return this.overtakeLoadPromise;
+  }
+
+  playOvertakeSound() {
+    if (!this.ctx) this.init();
+    if (!this.ctx || !this.masterGain) return;
+
+    const now = Date.now();
+    if (now < this.overtakeCooldownUntil) return;
+
+    this.resumeContext();
+
+    if (!this.overtakeBuffer) {
+      void this.loadOvertakeBuffer().then(() => {
+        if (this.overtakeBuffer) this.playOvertakeSound();
+      });
+      return;
+    }
+
+    this.overtakeCooldownUntil = now + 1500;
+
+    if (this.activeOvertakeSource) {
+      try {
+        this.activeOvertakeSource.stop();
+      } catch {
+        // already stopped
+      }
+      this.activeOvertakeSource = null;
+    }
+
+    const source = this.ctx.createBufferSource();
+    const gain = this.ctx.createGain();
+    source.buffer = this.overtakeBuffer;
+    gain.gain.value = 0.75 * this.volumes.master;
+    source.connect(gain);
+    gain.connect(this.masterGain);
+    source.onended = () => {
+      if (this.activeOvertakeSource === source) {
+        this.activeOvertakeSource = null;
+      }
+    };
+    source.start();
+    this.activeOvertakeSource = source;
+  }
+
+  private async loadLobbyMusicBuffer() {
+    if (!this.ctx || this.lobbyMusicBuffer || this.lobbyMusicLoadPromise) {
+      return this.lobbyMusicLoadPromise ?? undefined;
+    }
+
+    this.lobbyMusicLoadPromise = (async () => {
+      try {
+        const response = await fetch(LOBBY_MUSIC_URL);
+        if (!response.ok) return;
+        const data = await response.arrayBuffer();
+        if (!this.ctx) return;
+        this.lobbyMusicBuffer = await this.ctx.decodeAudioData(data);
+      } catch {
+        // Lobby music is optional
+      }
+    })();
+
+    return this.lobbyMusicLoadPromise;
+  }
+
+  private getLobbyMusicVolume() {
+    return 0.55 * this.volumes.ambient * this.volumes.master;
+  }
+
+  private startLobbyMusicPlayback() {
+    if (!this.ctx || !this.masterGain || !this.lobbyMusicBuffer || this.lobbyMusicPlaying) return;
+
+    this.stopLobbyMusic();
+
+    const source = this.ctx.createBufferSource();
+    const gain = this.ctx.createGain();
+    source.buffer = this.lobbyMusicBuffer;
+    source.loop = true;
+    gain.gain.value = this.getLobbyMusicVolume();
+    source.connect(gain);
+    gain.connect(this.masterGain);
+    source.start();
+    this.lobbyMusicSource = source;
+    this.lobbyMusicGain = gain;
+    this.lobbyMusicPlaying = true;
+  }
+
+  playLobbyMusic() {
+    if (!this.ctx) this.init();
+    if (!this.ctx || !this.masterGain) return;
+    this.resumeContext();
+
+    if (this.lobbyMusicPlaying) return;
+
+    if (!this.lobbyMusicBuffer) {
+      void this.loadLobbyMusicBuffer().then(() => {
+        if (this.lobbyMusicBuffer && !this.lobbyMusicPlaying) {
+          this.startLobbyMusicPlayback();
+        }
+      });
+      return;
+    }
+
+    this.startLobbyMusicPlayback();
+  }
+
+  stopLobbyMusic() {
+    if (this.lobbyMusicSource) {
+      try {
+        this.lobbyMusicSource.stop();
+      } catch {
+        // already stopped
+      }
+      this.lobbyMusicSource.disconnect();
+      this.lobbyMusicSource = null;
+    }
+    if (this.lobbyMusicGain) {
+      this.lobbyMusicGain.disconnect();
+      this.lobbyMusicGain = null;
+    }
+    this.lobbyMusicPlaying = false;
+  }
+
+  private async loadHornBuffer() {
+    if (!this.ctx || this.hornBuffer || this.hornLoadPromise) return this.hornLoadPromise ?? undefined;
+
+    this.hornLoadPromise = (async () => {
+      try {
+        const response = await fetch(HORN_AUDIO_URL);
+        if (!response.ok) return;
+        const data = await response.arrayBuffer();
+        if (!this.ctx) return;
+        this.hornBuffer = await this.ctx.decodeAudioData(data);
+      } catch {
+        // Fall back to synthetic horn if the asset fails to load
+      }
+    })();
+
+    return this.hornLoadPromise;
+  }
+
+  private playHornSample() {
+    if (!this.ctx || !this.masterGain) return;
+    this.resumeContext();
+
+    if (!this.hornBuffer) {
+      void this.loadHornBuffer().then(() => {
+        if (this.hornBuffer) this.playHornSample();
+        else this.playSyntheticHorn();
+      });
+      return;
+    }
+
+    if (this.activeHornSource) {
+      try {
+        this.activeHornSource.stop();
+      } catch {
+        // already stopped
+      }
+      this.activeHornSource = null;
+    }
+
+    const source = this.ctx.createBufferSource();
+    const gain = this.ctx.createGain();
+    source.buffer = this.hornBuffer;
+    gain.gain.value = 0.85 * this.volumes.master;
+    source.connect(gain);
+    gain.connect(this.masterGain);
+    source.onended = () => {
+      if (this.activeHornSource === source) {
+        this.activeHornSource = null;
+      }
+    };
+    source.start();
+    this.activeHornSource = source;
+  }
+
+  private playSyntheticHorn() {
+    if (!this.ctx || !this.masterGain) return;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    const filter = this.ctx.createBiquadFilter();
+    const t = this.ctx.currentTime;
+
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(320, t);
+    filter.type = 'lowpass';
+    filter.frequency.value = 900;
+    gain.gain.setValueAtTime(0.18 * this.volumes.master, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
+    osc.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.masterGain);
+    osc.start(t);
+    osc.stop(t + 0.35);
   }
 
   private resumeContext() {
@@ -39,6 +297,9 @@ class AudioManager {
   setVolumes(volumes: { master: number; engine: number; ambient: number }) {
     this.volumes = { ...this.volumes, ...volumes };
     if (this.masterGain) this.masterGain.gain.value = volumes.master;
+    if (this.lobbyMusicGain) {
+      this.lobbyMusicGain.gain.value = this.getLobbyMusicVolume();
+    }
   }
 
   private ensureEngine() {
@@ -115,8 +376,51 @@ class AudioManager {
   }
 
   playCelebration() {
+    if (!this.ctx) this.init();
     if (!this.ctx || !this.masterGain) return;
     this.resumeContext();
+    this.stopEngine();
+
+    if (!this.celebrationBuffer) {
+      void this.loadCelebrationBuffer().then(() => {
+        if (this.celebrationBuffer) this.playCelebrationSample();
+        else this.playSyntheticCelebration();
+      });
+      return;
+    }
+
+    this.playCelebrationSample();
+  }
+
+  private playCelebrationSample() {
+    if (!this.ctx || !this.masterGain || !this.celebrationBuffer) return;
+
+    if (this.activeCelebrationSource) {
+      try {
+        this.activeCelebrationSource.stop();
+      } catch {
+        // already stopped
+      }
+      this.activeCelebrationSource = null;
+    }
+
+    const source = this.ctx.createBufferSource();
+    const gain = this.ctx.createGain();
+    source.buffer = this.celebrationBuffer;
+    gain.gain.value = 0.9 * this.volumes.master;
+    source.connect(gain);
+    gain.connect(this.masterGain);
+    source.onended = () => {
+      if (this.activeCelebrationSource === source) {
+        this.activeCelebrationSource = null;
+      }
+    };
+    source.start();
+    this.activeCelebrationSource = source;
+  }
+
+  private playSyntheticCelebration() {
+    if (!this.ctx || !this.masterGain) return;
     const t = this.ctx.currentTime;
     const notes = [523, 659, 784, 1047];
     notes.forEach((freq, i) => {
@@ -152,6 +456,17 @@ class AudioManager {
     cheerGain.connect(this.masterGain);
     cheer.start(t + 0.35);
     cheer.stop(t + 0.85);
+  }
+
+  stopCelebration() {
+    if (this.activeCelebrationSource) {
+      try {
+        this.activeCelebrationSource.stop();
+      } catch {
+        // already stopped
+      }
+      this.activeCelebrationSource = null;
+    }
   }
 
   playCollisionImpact(severity: 'small' | 'medium' | 'large' | 'heavy', speedKmh: number) {
@@ -230,13 +545,17 @@ class AudioManager {
     if (!this.ctx || !this.masterGain) return;
     this.resumeContext();
 
+    if (type === 'horn') {
+      this.playHornSample();
+      return;
+    }
+
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
     const filter = this.ctx.createBiquadFilter();
     const t = this.ctx.currentTime;
 
     const configs: Partial<Record<SoundType, { freq: number; type: OscillatorType; duration: number; vol: number }>> = {
-      horn: { freq: 320, type: 'sine', duration: 0.35, vol: 0.18 },
       brake: { freq: 140, type: 'triangle', duration: 0.25, vol: 0.12 },
       collision: { freq: 90, type: 'triangle', duration: 0.35, vol: 0.28 },
       skid: { freq: 120, type: 'triangle', duration: 0.4, vol: 0.15 },
@@ -282,6 +601,8 @@ class AudioManager {
 
   dispose() {
     this.stopEngine();
+    this.stopLobbyMusic();
+    this.stopCelebration();
     this.ctx?.close();
     this.ctx = null;
     this.masterGain = null;
@@ -332,7 +653,28 @@ export function useAudioManager() {
     audioManager.stopEngine();
   }, []);
 
-  return { playEngine, playSound, playCollisionImpact, playCelebration, stopEngine };
+  const playLobbyMusic = useCallback(() => {
+    audioManager.playLobbyMusic();
+  }, []);
+
+  const stopLobbyMusic = useCallback(() => {
+    audioManager.stopLobbyMusic();
+  }, []);
+
+  const playOvertakeSound = useCallback(() => {
+    audioManager.playOvertakeSound();
+  }, []);
+
+  return {
+    playEngine,
+    playSound,
+    playCollisionImpact,
+    playCelebration,
+    stopEngine,
+    playLobbyMusic,
+    stopLobbyMusic,
+    playOvertakeSound,
+  };
 }
 
 export { audioManager };
