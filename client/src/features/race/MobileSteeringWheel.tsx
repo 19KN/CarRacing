@@ -1,56 +1,6 @@
-import { Suspense, useMemo, useRef, useCallback } from 'react';
-import { Canvas, useFrame } from '@react-three/fiber';
-import { useGLTF } from '@react-three/drei';
-import * as THREE from 'three';
+import { useRef, useCallback } from 'react';
 
-const WHEEL_GLB = '/assets/controls/steering-wheel.glb';
-const MAX_WHEEL_ROT = Math.PI * 0.42;
-
-function WheelModel({ rotation }: { rotation: number }) {
-  const { scene } = useGLTF(WHEEL_GLB);
-  const groupRef = useRef<THREE.Group>(null);
-
-  const model = useMemo(() => {
-    const cloned = scene.clone(true);
-    cloned.traverse((obj) => {
-      if (obj instanceof THREE.Mesh) {
-        obj.castShadow = true;
-        obj.receiveShadow = true;
-      }
-    });
-    const box = new THREE.Box3().setFromObject(cloned);
-    const size = box.getSize(new THREE.Vector3());
-    const maxDim = Math.max(size.x, size.y, size.z);
-    const scale = maxDim > 0 ? 1.6 / maxDim : 0.01;
-    cloned.scale.setScalar(scale);
-    box.setFromObject(cloned);
-    const center = box.getCenter(new THREE.Vector3());
-    cloned.position.sub(center);
-    return cloned;
-  }, [scene]);
-
-  useFrame(() => {
-    if (groupRef.current) {
-      groupRef.current.rotation.z = rotation;
-    }
-  });
-
-  return (
-    <group ref={groupRef} rotation={[Math.PI / 2, 0, 0]}>
-      <primitive object={model} />
-    </group>
-  );
-}
-
-function WheelScene({ rotation }: { rotation: number }) {
-  return (
-    <>
-      <ambientLight intensity={0.9} />
-      <directionalLight position={[2, 4, 5]} intensity={1.1} />
-      <WheelModel rotation={rotation} />
-    </>
-  );
-}
+const MAX_WHEEL_ROT = 110;
 
 interface MobileSteeringWheelProps {
   rotation: number;
@@ -73,56 +23,68 @@ export function MobileSteeringWheel({ rotation, onRotationChange, onRelease }: M
     return Math.atan2(clientY - cy, clientX - cx);
   }, []);
 
-  const applyRotation = useCallback((rot: number) => {
-    const clamped = Math.max(-MAX_WHEEL_ROT, Math.min(MAX_WHEEL_ROT, rot));
+  const applyRotation = useCallback((rotDeg: number) => {
+    const clamped = Math.max(-MAX_WHEEL_ROT, Math.min(MAX_WHEEL_ROT, rotDeg));
     onRotationChange(clamped, clamped / MAX_WHEEL_ROT);
   }, [onRotationChange]);
 
-  const onTouchStart = (e: React.TouchEvent) => {
+  const onPointerDown = (e: React.PointerEvent) => {
     e.preventDefault();
-    const touch = e.touches[0];
+    e.currentTarget.setPointerCapture(e.pointerId);
     activeRef.current = true;
-    startAngleRef.current = getAngle(touch.clientX, touch.clientY);
+    startAngleRef.current = getAngle(e.clientX, e.clientY);
     startRotationRef.current = rotation;
   };
 
-  const onTouchMove = (e: React.TouchEvent) => {
+  const onPointerMove = (e: React.PointerEvent) => {
     if (!activeRef.current) return;
     e.preventDefault();
-    const touch = e.touches[0];
-    const angle = getAngle(touch.clientX, touch.clientY);
+    const angle = getAngle(e.clientX, e.clientY);
     const delta = angle - startAngleRef.current;
-    applyRotation(startRotationRef.current - delta);
+    const deltaDeg = (delta * 180) / Math.PI;
+    applyRotation(startRotationRef.current - deltaDeg);
   };
 
-  const onTouchEnd = () => {
+  const onPointerUp = (e: React.PointerEvent) => {
+    e.preventDefault();
     activeRef.current = false;
+    try { e.currentTarget.releasePointerCapture(e.pointerId); } catch { /* noop */ }
     onRelease();
   };
+
+  const rot = rotation;
 
   return (
     <div
       ref={areaRef}
-      className="relative w-36 h-36 pointer-events-auto touch-none select-none"
-      onTouchStart={onTouchStart}
-      onTouchMove={onTouchMove}
-      onTouchEnd={onTouchEnd}
-      onTouchCancel={onTouchEnd}
+      className="relative w-40 h-40 pointer-events-auto touch-none select-none"
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerUp}
     >
-      <Canvas
-        className="rounded-full bg-black/35 border border-white/15"
-        camera={{ position: [0, 0, 2.4], fov: 42 }}
-        gl={{ alpha: true, antialias: true }}
+      <div className="absolute inset-0 rounded-full bg-gradient-to-b from-gray-800/80 to-black/80 border-2 border-white/20 shadow-xl" />
+
+      <div
+        className="absolute inset-2 transition-transform duration-75"
+        style={{ transform: `rotate(${rot}deg)` }}
       >
-        <Suspense fallback={null}>
-          <WheelScene rotation={rotation} />
-        </Suspense>
-      </Canvas>
+        <svg viewBox="0 0 120 120" className="w-full h-full drop-shadow-md">
+          <circle cx="60" cy="60" r="54" fill="#1a1a1a" stroke="#444" strokeWidth="3" />
+          <circle cx="60" cy="60" r="46" fill="none" stroke="#555" strokeWidth="2" />
+          <circle cx="60" cy="60" r="12" fill="#2a2a2a" stroke="#666" strokeWidth="2" />
+          <rect x="56" y="18" width="8" height="30" rx="4" fill="#3d3d3d" stroke="#666" strokeWidth="1" />
+          <rect x="56" y="72" width="8" height="30" rx="4" fill="#3d3d3d" stroke="#666" strokeWidth="1" />
+          <rect x="18" y="56" width="30" height="8" rx="4" fill="#3d3d3d" stroke="#666" strokeWidth="1" />
+          <rect x="72" y="56" width="30" height="8" rx="4" fill="#3d3d3d" stroke="#666" strokeWidth="1" />
+          <circle cx="60" cy="24" r="4" fill="#ff9933" />
+          <path d="M 20 60 Q 60 40 100 60" fill="none" stroke="#ff9933" strokeWidth="2.5" strokeLinecap="round" opacity="0.7" />
+        </svg>
+      </div>
+
       <div className="absolute bottom-1 left-0 right-0 text-center text-[10px] text-gray-400 pointer-events-none">
         STEER
       </div>
     </div>
   );
 }
-
-useGLTF.preload(WHEEL_GLB);

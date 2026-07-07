@@ -1,29 +1,59 @@
 import { useRef, useEffect } from 'react';
 import { VehicleInput } from '../physics/vehiclePhysics';
 
+/** Single shared input so HUD touch controls and GameScene use the same state */
+export const vehicleInputState: VehicleInput = {
+  accelerate: 0,
+  brake: 0,
+  steer: 0,
+  handbrake: false,
+};
+
+const touchDriveRef = { accel: false, brake: false, steer: false };
+
+export function setTouchPedal(pedal: 'accel' | 'brake', active: boolean) {
+  if (pedal === 'accel') touchDriveRef.accel = active;
+  if (pedal === 'brake') touchDriveRef.brake = active;
+  vehicleInputState.accelerate = touchDriveRef.accel ? 1 : 0;
+  vehicleInputState.brake = touchDriveRef.brake ? 1 : 0;
+}
+
+export function setTouchSteer(value: number) {
+  touchDriveRef.steer = value !== 0;
+  vehicleInputState.steer = Math.max(-1, Math.min(1, value));
+}
+
+export function clearTouchSteer() {
+  touchDriveRef.steer = false;
+  vehicleInputState.steer = 0;
+}
+
 export function useVehicleControls() {
-  const inputRef = useRef<VehicleInput>({
-    accelerate: 0,
-    brake: 0,
-    steer: 0,
-    handbrake: false,
-  });
+  const inputRef = useRef(vehicleInputState);
   const hornRef = useRef(false);
   const nitroRef = useRef(false);
   const keysRef = useRef<Record<string, boolean>>({});
 
   useEffect(() => {
     const applyKeys = () => {
-      const k = keysRef.current;
-      inputRef.current.accelerate = (k['KeyW'] || k['ArrowUp']) ? 1 : 0;
-      inputRef.current.brake = (k['KeyS'] || k['ArrowDown']) ? 1 : 0;
-      let steer = 0;
-      if (k['KeyA'] || k['ArrowLeft']) steer -= 1;
-      if (k['KeyD'] || k['ArrowRight']) steer += 1;
-      inputRef.current.steer = steer;
-      inputRef.current.handbrake = !!k['Space'];
-      hornRef.current = !!k['KeyH'];
-      nitroRef.current = !!k['KeyN'];
+      if (touchDriveRef.accel || touchDriveRef.brake || touchDriveRef.steer) {
+        if (!touchDriveRef.accel) vehicleInputState.accelerate = 0;
+        if (!touchDriveRef.brake) vehicleInputState.brake = 0;
+        if (!touchDriveRef.steer) vehicleInputState.steer = 0;
+        if (touchDriveRef.accel) vehicleInputState.accelerate = 1;
+        if (touchDriveRef.brake) vehicleInputState.brake = 1;
+      } else {
+        const k = keysRef.current;
+        vehicleInputState.accelerate = (k['KeyW'] || k['ArrowUp']) ? 1 : 0;
+        vehicleInputState.brake = (k['KeyS'] || k['ArrowDown']) ? 1 : 0;
+        let steer = 0;
+        if (k['KeyA'] || k['ArrowLeft']) steer -= 1;
+        if (k['KeyD'] || k['ArrowRight']) steer += 1;
+        vehicleInputState.steer = steer;
+      }
+      vehicleInputState.handbrake = !!keysRef.current['Space'];
+      hornRef.current = !!keysRef.current['KeyH'];
+      nitroRef.current = !!keysRef.current['KeyN'];
     };
 
     const handleDown = (e: KeyboardEvent) => {
@@ -46,11 +76,11 @@ export function useVehicleControls() {
     let raf = 0;
     const pollGamepad = () => {
       const gp = navigator.getGamepads?.()[0];
-      if (gp) {
-        inputRef.current.accelerate = gp.buttons[7]?.value || (gp.buttons[0]?.pressed ? 1 : 0);
-        inputRef.current.brake = gp.buttons[6]?.value || (gp.buttons[1]?.pressed ? 1 : 0);
-        inputRef.current.steer = gp.axes[0] || 0;
-        inputRef.current.handbrake = gp.buttons[2]?.pressed || false;
+      if (gp && !touchDriveRef.accel && !touchDriveRef.brake && !touchDriveRef.steer) {
+        vehicleInputState.accelerate = gp.buttons[7]?.value || (gp.buttons[0]?.pressed ? 1 : 0);
+        vehicleInputState.brake = gp.buttons[6]?.value || (gp.buttons[1]?.pressed ? 1 : 0);
+        vehicleInputState.steer = gp.axes[0] || 0;
+        vehicleInputState.handbrake = gp.buttons[2]?.pressed || false;
       }
       raf = requestAnimationFrame(pollGamepad);
     };
@@ -68,14 +98,12 @@ export function useVehicleControls() {
 }
 
 export function useTouchControls() {
-  const inputRef = useRef<VehicleInput>({
-    accelerate: 0, brake: 0, steer: 0, handbrake: false,
-  });
-
-  const setAccelerate = (v: number) => { inputRef.current.accelerate = v; };
-  const setBrake = (v: number) => { inputRef.current.brake = v; };
-  const setSteer = (v: number) => { inputRef.current.steer = v; };
-  const setHandbrake = (v: boolean) => { inputRef.current.handbrake = v; };
-
-  return { inputRef, setAccelerate, setBrake, setSteer, setHandbrake };
+  const inputRef = useRef(vehicleInputState);
+  return {
+    inputRef,
+    setAccelerate: (v: number) => setTouchPedal('accel', v > 0),
+    setBrake: (v: number) => setTouchPedal('brake', v > 0),
+    setSteer: setTouchSteer,
+    setHandbrake: (v: boolean) => { vehicleInputState.handbrake = v; },
+  };
 }
