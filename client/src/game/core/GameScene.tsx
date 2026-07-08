@@ -55,7 +55,7 @@ function PlayerVehicle({
   const [isDestroyed, setIsDestroyed] = useState(false);
   const health = useRaceStore((s) => s.health);
   const respawnRequest = useRaceStore((s) => s.respawnRequest);
-  const { playEngine, playSound, playCollisionImpact, playCelebration, stopEngine, playOvertakeSound } = useAudioManager();
+  const { playEngine, playSound, playCollisionImpact, playCelebration, playExplosion, stopEngine, playOvertakeSound } = useAudioManager();
   const posRef = useRef({ x: spawnPosition.x, y: spawnPosition.y, z: spawnPosition.z });
   const rotRef = useRef(spawnPosition.rotation);
   const velRef = useRef({ x: 0, y: 0, z: 0 });
@@ -116,9 +116,7 @@ function PlayerVehicle({
     lastSpeedReport.current = 0;
     physics.current.stopVehicle();
     stopEngine();
-    playCollisionImpact('heavy', maxSpeedRef.current);
-    playSound('collision');
-    playSound('collision');
+    playExplosion();
     triggerCollisionFeedback('heavy', maxSpeedRef.current);
   };
 

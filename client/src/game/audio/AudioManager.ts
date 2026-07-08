@@ -18,6 +18,7 @@ const HORN_AUDIO_URL = '/assets/audio/horn.mp3';
 const LOBBY_MUSIC_URL = '/assets/audio/lobby-music.mp3';
 const OVERTAKE_AUDIO_URL = '/assets/audio/overtake.mp3';
 const CELEBRATION_AUDIO_URL = '/assets/audio/celebration.mp3';
+const EXPLOSION_AUDIO_URL = '/assets/audio/explosion.mp3';
 
 class AudioManager {
   private ctx: AudioContext | null = null;
@@ -38,6 +39,9 @@ class AudioManager {
   private celebrationBuffer: AudioBuffer | null = null;
   private celebrationLoadPromise: Promise<void> | null = null;
   private activeCelebrationSource: AudioBufferSourceNode | null = null;
+  private explosionBuffer: AudioBuffer | null = null;
+  private explosionLoadPromise: Promise<void> | null = null;
+  private activeExplosionSource: AudioBufferSourceNode | null = null;
   private volumes: Record<string, number> = {
     engine: 0.7, ambient: 0.5, ui: 0.6, master: 0.8,
   };
@@ -52,6 +56,27 @@ class AudioManager {
     void this.loadLobbyMusicBuffer();
     void this.loadOvertakeBuffer();
     void this.loadCelebrationBuffer();
+    void this.loadExplosionBuffer();
+  }
+
+  private async loadExplosionBuffer() {
+    if (!this.ctx || this.explosionBuffer || this.explosionLoadPromise) {
+      return this.explosionLoadPromise ?? undefined;
+    }
+
+    this.explosionLoadPromise = (async () => {
+      try {
+        const response = await fetch(EXPLOSION_AUDIO_URL);
+        if (!response.ok) return;
+        const data = await response.arrayBuffer();
+        if (!this.ctx) return;
+        this.explosionBuffer = await this.ctx.decodeAudioData(data);
+      } catch {
+        // Fall back to synthetic explosion if the asset fails to load
+      }
+    })();
+
+    return this.explosionLoadPromise;
   }
 
   private async loadCelebrationBuffer() {
@@ -469,6 +494,86 @@ class AudioManager {
     }
   }
 
+  playExplosion() {
+    if (!this.ctx) this.init();
+    if (!this.ctx || !this.masterGain) return;
+    this.resumeContext();
+
+    if (!this.explosionBuffer) {
+      void this.loadExplosionBuffer().then(() => {
+        if (this.explosionBuffer) this.playExplosionSample();
+        else this.playSyntheticExplosion();
+      });
+      return;
+    }
+
+    this.playExplosionSample();
+  }
+
+  private playExplosionSample() {
+    if (!this.ctx || !this.masterGain || !this.explosionBuffer) return;
+
+    if (this.activeExplosionSource) {
+      try {
+        this.activeExplosionSource.stop();
+      } catch {
+        // already stopped
+      }
+      this.activeExplosionSource = null;
+    }
+
+    const source = this.ctx.createBufferSource();
+    const gain = this.ctx.createGain();
+    source.buffer = this.explosionBuffer;
+    gain.gain.value = 1.0 * this.volumes.master;
+    source.connect(gain);
+    gain.connect(this.masterGain);
+    source.onended = () => {
+      if (this.activeExplosionSource === source) {
+        this.activeExplosionSource = null;
+      }
+    };
+    source.start();
+    this.activeExplosionSource = source;
+  }
+
+  private playSyntheticExplosion() {
+    if (!this.ctx || !this.masterGain) return;
+    const t = this.ctx.currentTime;
+
+    const noise = this.ctx.createBufferSource();
+    const len = Math.floor(this.ctx.sampleRate * 0.8);
+    const buffer = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < len; i++) {
+      data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 1.8);
+    }
+    noise.buffer = buffer;
+    const filter = this.ctx.createBiquadFilter();
+    const gain = this.ctx.createGain();
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(900, t);
+    filter.frequency.exponentialRampToValueAtTime(80, t + 0.7);
+    gain.gain.setValueAtTime(0.55 * this.volumes.master, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.85);
+    noise.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.masterGain);
+    noise.start(t);
+    noise.stop(t + 0.85);
+  }
+
+  stopExplosion() {
+    if (this.activeExplosionSource) {
+      try {
+        this.activeExplosionSource.stop();
+      } catch {
+        // already stopped
+      }
+      this.activeExplosionSource = null;
+    }
+  }
+
   playCollisionImpact(severity: 'small' | 'medium' | 'large' | 'heavy', speedKmh: number) {
     if (!this.ctx || !this.masterGain) return;
     this.resumeContext();
@@ -645,6 +750,10 @@ export function useAudioManager() {
     audioManager.playCelebration();
   }, []);
 
+  const playExplosion = useCallback(() => {
+    audioManager.playExplosion();
+  }, []);
+
   const playSound = useCallback((type: SoundType) => {
     audioManager.playOneShot(type);
   }, []);
@@ -670,6 +779,7 @@ export function useAudioManager() {
     playSound,
     playCollisionImpact,
     playCelebration,
+    playExplosion,
     stopEngine,
     playLobbyMusic,
     stopLobbyMusic,
