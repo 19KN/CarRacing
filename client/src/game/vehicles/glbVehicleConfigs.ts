@@ -1,7 +1,7 @@
 export interface GLBVehicleConfig {
   path: string;
   targetSize: number;
-  /** Only set when a GLB exports facing the wrong axis (+X/-X). Do not use ±90° on models that already face +Z. */
+  /** Per-GLB correction so the model faces the game drive direction (+Z local → -Z world at spawn). */
   modelRotation?: [number, number, number];
   fixWheelPivots?: boolean;
   isWheel?: (name: string) => boolean;
@@ -20,11 +20,13 @@ export const GLB_VEHICLE_CONFIGS: Record<string, GLBVehicleConfig> = {
   bicycle: {
     path: '/assets/vehicles/bike.glb',
     targetSize: 1.6,
+    modelRotation: [0, Math.PI, 0],
     paintMesh: (name) => name === 'Bike',
   },
   motorcycle: {
     path: '/assets/vehicles/motorcycle.glb',
     targetSize: 2.4,
+    modelRotation: [0, -Math.PI / 2, 0],
     paintMesh: () => true,
   },
   wagon: {
@@ -41,6 +43,7 @@ export const GLB_VEHICLE_CONFIGS: Record<string, GLBVehicleConfig> = {
   f1_car: {
     path: '/assets/vehicles/f1-car.glb',
     targetSize: 4.2,
+    modelRotation: [0, Math.PI / 2, 0],
     fixWheelPivots: true,
     isWheel: (name) => /wheel|tire|tyre/i.test(name),
     isGlass: (name) => /glass|visor|windshield/i.test(name),
