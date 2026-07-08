@@ -1,7 +1,7 @@
 export interface GLBVehicleConfig {
   path: string;
   targetSize: number;
-  /** Correct GLB forward axis to match game driving direction (-Z) */
+  /** Only set when a GLB exports facing the wrong axis (+X/-X). Do not use ±90° on models that already face +Z. */
   modelRotation?: [number, number, number];
   fixWheelPivots?: boolean;
   isWheel?: (name: string) => boolean;
@@ -20,13 +20,11 @@ export const GLB_VEHICLE_CONFIGS: Record<string, GLBVehicleConfig> = {
   bicycle: {
     path: '/assets/vehicles/bike.glb',
     targetSize: 1.6,
-    modelRotation: [0, -Math.PI / 2, 0],
     paintMesh: (name) => name === 'Bike',
   },
   motorcycle: {
     path: '/assets/vehicles/motorcycle.glb',
     targetSize: 2.4,
-    modelRotation: [0, -Math.PI / 2, 0],
     paintMesh: () => true,
   },
   wagon: {
@@ -43,7 +41,6 @@ export const GLB_VEHICLE_CONFIGS: Record<string, GLBVehicleConfig> = {
   f1_car: {
     path: '/assets/vehicles/f1-car.glb',
     targetSize: 4.2,
-    modelRotation: [0, Math.PI / 2, 0],
     fixWheelPivots: true,
     isWheel: (name) => /wheel|tire|tyre/i.test(name),
     isGlass: (name) => /glass|visor|windshield/i.test(name),
@@ -52,7 +49,6 @@ export const GLB_VEHICLE_CONFIGS: Record<string, GLBVehicleConfig> = {
   dodge_challenger: {
     path: '/assets/vehicles/dodge-challenger.glb',
     targetSize: 4.6,
-    modelRotation: [0, -Math.PI / 2, 0],
     fixWheelPivots: true,
     isWheel: (name) => /wheel|tire|tyre/i.test(name),
     isGlass: (name) => /glass|window/i.test(name),
@@ -61,7 +57,6 @@ export const GLB_VEHICLE_CONFIGS: Record<string, GLBVehicleConfig> = {
   bursley_defiance: {
     path: '/assets/vehicles/bursley-defiance.glb',
     targetSize: 4.5,
-    modelRotation: [0, -Math.PI / 2, 0],
     fixWheelPivots: true,
     isWheel: (name) => /wheel|tire|tyre/i.test(name),
     isGlass: (name) => /glass|window/i.test(name),
