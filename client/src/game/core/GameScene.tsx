@@ -477,6 +477,7 @@ export const GameScene = memo(function GameScene({
   isSolo?: boolean;
 }) {
   const settings = useSettingsStore((s) => s.settings.graphics);
+  const timeOfDay = useRaceStore((s) => s.timeOfDay);
 
   return (
     <Canvas
@@ -504,7 +505,7 @@ export const GameScene = memo(function GameScene({
         {settings.bloom && (
           <EffectComposer multisampling={0}>
             <Bloom intensity={0.15} luminanceThreshold={0.92} luminanceSmoothing={0.9} />
-            <Vignette offset={0.3} darkness={0.4} />
+            <Vignette offset={0.3} darkness={timeOfDay === 'night' ? 0.45 : 0.22} />
           </EffectComposer>
         )}
       </Suspense>
