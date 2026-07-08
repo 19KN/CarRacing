@@ -43,7 +43,7 @@ export const GLB_VEHICLE_CONFIGS: Record<string, GLBVehicleConfig> = {
   f1_car: {
     path: '/assets/vehicles/f1-car.glb',
     targetSize: 4.2,
-    modelRotation: [0, -Math.PI / 2, 0],
+    modelRotation: [0, Math.PI / 2, 0],
     fixWheelPivots: true,
     isWheel: (name) => /wheel|tire|tyre/i.test(name),
     isGlass: (name) => /glass|visor|windshield/i.test(name),

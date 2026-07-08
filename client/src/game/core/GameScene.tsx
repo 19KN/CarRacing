@@ -18,7 +18,7 @@ import { SmokeParticles } from '../effects/Effects';
 import { ExplosionFire } from '../effects/ExplosionFire';
 import { PlayerNameLabel } from '../effects/PlayerNameLabel';
 import { triggerCollisionFeedback } from '../effects/collisionFeedback';
-import { useCameraController, useCameraSwitcher } from '../camera/CameraController';
+import { useCameraController, useCameraSwitcher, CAM_DISTANCE, CAM_HEIGHT, CAM_LOOK_HEIGHT } from '../camera/CameraController';
 import { useVehicleControls } from '../core/controls';
 import { createVehiclePhysics } from '../physics/vehiclePhysics';
 import { useAudioManager } from '../audio/AudioManager';
@@ -295,10 +295,21 @@ function PlayerVehicle({
             playSound('brake');
             triggerCollisionFeedback('small', state.speed * 0.25);
           } else {
-            const { severity } = getMedianCollisionDamage(medianHit.type, state.speed);
+            const { severity, damage } = getMedianCollisionDamage(medianHit.type, state.speed);
+            const newHealth = Math.max(0, health - damage);
+            useRaceStore.getState().setHealth(newHealth);
             physics.current.applyTrafficCollision(severity, medianHit.position.x);
             playCollisionImpact(severity, state.speed * 0.5);
             triggerCollisionFeedback(severity, state.speed * 0.5);
+
+            if (!isSolo) {
+              getSocket().emit(SocketEvents.COLLISION, {
+                playerId: localPlayerId,
+                severity,
+                position: { ...state.position },
+                collisionType: 'obstacle',
+              });
+            }
           }
         }
       }
@@ -411,7 +422,15 @@ export const GameScene = memo(function GameScene({
   return (
     <Canvas
       shadows={settings.shadows}
-      camera={{ position: [PLAYER_LANE_X, 8, 35], fov: 65, near: 0.1, far: settings.drawDistance }}
+      camera={{
+        position: [PLAYER_LANE_X, CAM_HEIGHT, RACE_START_Z + CAM_DISTANCE],
+        fov: 65,
+        near: 0.1,
+        far: settings.drawDistance,
+      }}
+      onCreated={({ camera }) => {
+        camera.lookAt(PLAYER_LANE_X, CAM_LOOK_HEIGHT, RACE_START_Z - 18);
+      }}
       gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping }}
       style={{ width: '100vw', height: '100vh' }}
       frameloop="always"

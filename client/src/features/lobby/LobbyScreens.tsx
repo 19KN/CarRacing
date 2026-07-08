@@ -7,6 +7,7 @@ import { connectSocket, joinLobbySocket, leaveLobbySocket, getSocket, SocketEven
 import { VEHICLES, VEHICLE_COLORS, MAPS, MaxPlayers, DEFAULT_MAP_ID } from '@indian-racing/shared';
 import { copyToClipboard } from '../../utils/progression';
 import { useAudioManager } from '../../game/audio/AudioManager';
+import { GameRulesPanel } from './GameRulesPanel';
 
 const VehiclePreview = lazy(() => import('../garage/VehiclePreview').then((m) => ({ default: m.VehiclePreview })));
 
@@ -114,6 +115,7 @@ export function CreateLobby() {
         )}
 
         <Button variant="secondary" onClick={() => navigate('/menu')} className="w-full mt-3">Cancel</Button>
+        <GameRulesPanel compact />
       </Card>
     </div>
   );
@@ -182,6 +184,7 @@ export function JoinLobby() {
           </Button>
           <Button variant="secondary" onClick={() => navigate('/menu')} className="w-full">Back</Button>
         </div>
+        <GameRulesPanel compact />
       </Card>
     </div>
   );
@@ -421,6 +424,8 @@ export function LobbyScreen() {
               ))}
             </div>
           </Card>
+
+          <GameRulesPanel />
         </div>
 
         <div className="space-y-4">
