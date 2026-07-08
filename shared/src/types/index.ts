@@ -5,6 +5,7 @@ export type RoadType = 'highway' | 'city' | 'hill' | 'village' | 'beach' | 'circ
 export type WeatherType = 'clear' | 'rain' | 'fog' | 'thunder' | 'wind';
 export type TimeOfDay = 'morning' | 'afternoon' | 'evening' | 'night' | 'sunrise' | 'sunset';
 export type TrafficSignalState = 'red' | 'yellow' | 'green';
+export type TrafficLevel = 'less' | 'medium' | 'high';
 export type CollisionSeverity = 'small' | 'medium' | 'large' | 'heavy';
 export type CameraMode = 'firstPerson' | 'thirdPerson' | 'topView' | 'freeCamera' | 'cinematic';
 export type SceneryType =
@@ -117,6 +118,7 @@ export interface LobbyPlayer {
 export interface LobbySettings {
   maxPlayers: MaxPlayers;
   mapId: string;
+  trafficLevel: TrafficLevel;
   policeMode: boolean;
   allowBots: boolean;
   isPrivate: boolean;
@@ -167,6 +169,7 @@ export interface RaceState {
   players: RacePlayerState[];
   weather: WeatherType;
   timeOfDay: TimeOfDay;
+  trafficLevel: TrafficLevel;
   startedAt?: number;
   seed: number;
   trafficSignalState: TrafficSignalState;

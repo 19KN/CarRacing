@@ -3,9 +3,11 @@ import { Html } from '@react-three/drei';
 export function PlayerNameLabel({
   name,
   isLocal = false,
+  metersToFinish,
 }: {
   name: string;
   isLocal?: boolean;
+  metersToFinish?: number | null;
 }) {
   return (
     <Html
@@ -30,6 +32,18 @@ export function PlayerNameLabel({
         }}
       >
         {name}
+        {metersToFinish != null && (
+          <div
+            style={{
+              fontSize: '11px',
+              fontWeight: 600,
+              marginTop: '2px',
+              color: isLocal ? '#fff' : '#FF9933',
+            }}
+          >
+            {metersToFinish}m to go
+          </div>
+        )}
       </div>
     </Html>
   );

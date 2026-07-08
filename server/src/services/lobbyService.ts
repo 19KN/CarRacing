@@ -1,6 +1,6 @@
 import {
   Lobby, LobbyPlayer, LobbySettings, MaxPlayers, ChatMessage,
-  DEFAULT_MAP_ID, DEFAULT_VEHICLE_ID, VEHICLE_COLORS,
+  DEFAULT_MAP_ID, DEFAULT_VEHICLE_ID, VEHICLE_COLORS, TrafficLevel, DEFAULT_TRAFFIC_LEVEL, isTrafficLevel,
 } from '@indian-racing/shared';
 import { store } from './memoryStore';
 import { generateGamingId, generatePlayerId, generateChatId } from '../utils/idGenerator';
@@ -13,6 +13,7 @@ export class LobbyService {
     maxPlayers: MaxPlayers,
     socketId: string,
     mapId: string = DEFAULT_MAP_ID,
+    trafficLevel: TrafficLevel = DEFAULT_TRAFFIC_LEVEL,
   ): Lobby {
     let gamingId = generateGamingId();
     while (store.isGamingIdUsed(gamingId)) {
@@ -34,6 +35,7 @@ export class LobbyService {
     const settings: LobbySettings = {
       maxPlayers,
       mapId,
+      trafficLevel: isTrafficLevel(trafficLevel) ? trafficLevel : DEFAULT_TRAFFIC_LEVEL,
       policeMode: false,
       allowBots: false,
       isPrivate: false,

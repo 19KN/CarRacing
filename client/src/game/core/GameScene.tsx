@@ -2,8 +2,8 @@ import { useRef, useState, useEffect, Suspense, memo } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { EffectComposer, Bloom, Vignette } from '@react-three/postprocessing';
 import * as THREE from 'three';
-import { getVehicleById, getMapById, DEFAULT_MAP_ID, DEFAULT_VEHICLE_ID, getMapRaceDistance, RACE_START_Z, getRaceSpawnPosition } from '@indian-racing/shared';
-import { getFinishLineZ } from '../../utils/soloRace';
+import { getVehicleById, getMapById, DEFAULT_MAP_ID, DEFAULT_VEHICLE_ID, getMapRaceDistance, RACE_START_Z, getRaceSpawnPosition, resolveTrafficDensity, DEFAULT_TRAFFIC_LEVEL } from '@indian-racing/shared';
+import { getFinishLineZ, getMetersToFinishLine } from '../../utils/soloRace';
 import { VehicleMesh } from '../vehicles/VehicleMesh';
 import { MapEnvironment } from '../maps/MapEnvironment';
 import { PLAYER_LANE_X } from '../maps/IndianHighwayRoad';
@@ -73,13 +73,23 @@ function PlayerVehicle({
   const respawnTimer = useRef(0);
   const localPlayerId = useLobbyStore((s) => s.localPlayerId) || useAuthStore((s) => s.profile.id);
   const remotePlayerSides = useRef(new Map<string, 'behind' | 'ahead' | 'unknown'>());
-  const raceStartZ = useRef(spawnPosition.z);
   const lastDistanceReport = useRef(-1);
   const finishedRef = useRef(false);
   const maxSpeedRef = useRef(0);
   const map = getMapById(mapId) || getMapById(DEFAULT_MAP_ID)!;
   const totalRaceDistance = getMapRaceDistance(map);
-  const finishZ = getFinishLineZ(totalRaceDistance, raceStartZ.current);
+  const finishLineZ = getFinishLineZ(totalRaceDistance, RACE_START_Z);
+
+  const completeFinish = () => {
+    if (finishedRef.current) return;
+    finishedRef.current = true;
+    const startedAt = useRaceStore.getState().race?.startedAt ?? Date.now();
+    const finishTimeMs = Date.now() - startedAt;
+    useRaceStore.getState().setDistanceRemaining(0);
+    useRaceStore.getState().setRaceFinished(finishTimeMs);
+    playCelebration();
+    if (!isSolo) getSocket().emit(SocketEvents.RACE_FINISH);
+  };
 
   const getRespawnPoint = () => {
     const cp = map.checkpoints[Math.max(0, checkpointRef.current)];
@@ -162,8 +172,6 @@ function PlayerVehicle({
   }, [spawnPosition.x, spawnPosition.y, spawnPosition.z, spawnPosition.rotation, vehicleId]);
 
   useFrame((_, delta) => {
-    if (useRaceStore.getState().isRaceFinished) return;
-
     const countdown = useRaceStore.getState().countdown;
     if (!isSolo && countdown !== null) {
       playerPositionRegistry.x = posRef.current.x;
@@ -237,23 +245,15 @@ function PlayerVehicle({
       useRaceStore.getState().setMaxRaceSpeed(state.speed);
     }
 
-    const traveled = Math.max(0, raceStartZ.current - state.position.z);
-    const remaining = Math.max(0, totalRaceDistance - traveled);
+    const remaining = getMetersToFinishLine(state.position.z, totalRaceDistance, RACE_START_Z);
     const roundedRemaining = Math.round(remaining);
     if (roundedRemaining !== lastDistanceReport.current) {
       useRaceStore.getState().setDistanceRemaining(remaining);
       lastDistanceReport.current = roundedRemaining;
     }
 
-    if (!finishedRef.current && state.position.z <= finishZ + 10) {
-      finishedRef.current = true;
-      physics.current.stopVehicle();
-      const startedAt = useRaceStore.getState().race?.startedAt ?? Date.now();
-      const finishTimeMs = Date.now() - startedAt;
-      useRaceStore.getState().setDistanceRemaining(0);
-      useRaceStore.getState().setRaceFinished(finishTimeMs);
-      if (isSolo) playCelebration();
-      if (!isSolo) getSocket().emit(SocketEvents.RACE_FINISH);
+    if (!finishedRef.current && (remaining <= 0.5 || state.position.z <= finishLineZ)) {
+      completeFinish();
     }
 
     playEngine(
@@ -405,7 +405,7 @@ function PlayerVehicle({
           getSocket().emit(SocketEvents.CHECKPOINT, { checkpointIndex: checkpointRef.current });
         }
         if (checkpointRef.current >= checkpoints.length - 1) {
-          if (!isSolo) getSocket().emit(SocketEvents.RACE_FINISH);
+          completeFinish();
         }
       }
     }
@@ -435,6 +435,7 @@ function GameWorld({
   const timeOfDay = useRaceStore((s) => s.timeOfDay) as 'morning' | 'afternoon' | 'evening' | 'night' | 'sunrise' | 'sunset';
   const race = useRaceStore((s) => s.race);
   const lobby = useLobbyStore((s) => s.lobby);
+  const selectedTrafficLevel = useLobbyStore((s) => s.selectedTrafficLevel);
   const playerId = useAuthStore((s) => s.profile.id);
   const localPlayerId = useLobbyStore((s) => s.localPlayerId);
   const username = useAuthStore((s) => s.profile.username);
@@ -454,6 +455,8 @@ function GameWorld({
     })();
   const otherPlayers = race?.players.filter((p) => p.playerId !== resolvedPlayerId) ?? [];
   const isMultiplayer = playerCount >= 2;
+  const trafficLevel = race?.trafficLevel ?? lobby?.settings.trafficLevel ?? selectedTrafficLevel ?? DEFAULT_TRAFFIC_LEVEL;
+  const trafficDensity = resolveTrafficDensity(map.trafficDensity, trafficLevel);
 
   useEffect(() => {
     const socket = getSocket();
@@ -467,7 +470,7 @@ function GameWorld({
     <>
       <WeatherSystem weather={weather} timeOfDay={timeOfDay} />
       <MapEnvironment map={map} />
-      <TrafficSystem path={map.checkpoints} density={map.trafficDensity} signalState={signalState} />
+      <TrafficSystem path={map.checkpoints} density={trafficDensity} signalState={signalState} />
       <PlayerVehicle
         vehicleId={vehicleId}
         vehicleColor={vehicleColor}
@@ -485,6 +488,7 @@ function GameWorld({
           vehicleColor={p.vehicleColor}
           initialPosition={p.position}
           initialRotation={p.rotation}
+          mapId={mapId}
         />
       ))}
     </>

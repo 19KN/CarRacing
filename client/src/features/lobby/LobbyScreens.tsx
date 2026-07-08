@@ -4,7 +4,8 @@ import { Button, Card, Input } from '../../components/ui';
 import { useAuthStore, useLobbyStore, useRaceStore } from '../../stores';
 import { apiFetch } from '../../utils/api';
 import { connectSocket, joinLobbySocket, leaveLobbySocket, getSocket, SocketEvents } from '../../utils/socket';
-import { VEHICLES, VEHICLE_COLORS, MAPS, MaxPlayers, DEFAULT_MAP_ID } from '@indian-racing/shared';
+import { VEHICLES, VEHICLE_COLORS, MAPS, MaxPlayers, DEFAULT_MAP_ID, DEFAULT_TRAFFIC_LEVEL, TrafficLevel, TRAFFIC_LEVEL_LABELS } from '@indian-racing/shared';
+import { TrafficLevelPicker } from '../../components/ui/TrafficLevelPicker';
 import { copyToClipboard } from '../../utils/progression';
 import { useAudioManager } from '../../game/audio/AudioManager';
 import { GameRulesPanel } from './GameRulesPanel';
@@ -17,6 +18,7 @@ export function CreateLobby() {
   const [step, setStep] = useState<CreateStep>('players');
   const [maxPlayers, setMaxPlayers] = useState<MaxPlayers>(4);
   const [mapId, setMapId] = useState(DEFAULT_MAP_ID);
+  const [trafficLevel, setTrafficLevel] = useState<TrafficLevel>(DEFAULT_TRAFFIC_LEVEL);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const profile = useAuthStore((s) => s.profile);
@@ -33,7 +35,7 @@ export function CreateLobby() {
     try {
       const data = await apiFetch<{ lobby: ReturnType<typeof useLobbyStore.getState>['lobby'] }>(
         '/api/lobby/create',
-        { method: 'POST', body: JSON.stringify({ maxPlayers, mapId, avatar: profile.avatar }) },
+        { method: 'POST', body: JSON.stringify({ maxPlayers, mapId, trafficLevel, avatar: profile.avatar }) },
       );
       setLobby(data.lobby);
       setGamingId(data.lobby!.gamingId);
@@ -104,6 +106,13 @@ export function CreateLobby() {
                 Selected: <span className="text-saffron">{selectedMap.name}</span>
               </p>
             )}
+
+            <TrafficLevelPicker
+              value={trafficLevel}
+              onChange={setTrafficLevel}
+              className="mb-4"
+            />
+
             {error && <p className="text-red-400 text-sm mb-3">{error}</p>}
             <div className="flex gap-2">
               <Button variant="secondary" onClick={() => setStep('players')} className="flex-1">Back</Button>
@@ -202,7 +211,8 @@ export function LobbyScreen() {
   const { playLobbyMusic, stopLobbyMusic } = useAudioManager();
   const [message, setMessage] = useState('');
   const [copied, setCopied] = useState(false);
-  const chatEndRef = useRef<HTMLDivElement>(null);
+  const chatContainerRef = useRef<HTMLDivElement>(null);
+  const prevChatLengthRef = useRef(0);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -229,7 +239,13 @@ export function LobbyScreen() {
   }, [lobby?.gamingId, countdown, playLobbyMusic, stopLobbyMusic]);
 
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const container = chatContainerRef.current;
+    if (!container || chat.length <= prevChatLengthRef.current) {
+      prevChatLengthRef.current = chat.length;
+      return;
+    }
+    prevChatLengthRef.current = chat.length;
+    container.scrollTop = container.scrollHeight;
   }, [chat]);
 
   if (!lobby) return null;
@@ -296,7 +312,7 @@ export function LobbyScreen() {
   };
 
   return (
-    <div className="min-h-screen overflow-y-auto bg-game-dark p-4 pb-10">
+    <div className="min-h-screen overflow-y-auto [overflow-anchor:auto] bg-game-dark p-4 pb-10">
       <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div className="lg:col-span-2 space-y-4">
           {/* Share Lobby ID — prominent for host */}
@@ -345,11 +361,14 @@ export function LobbyScreen() {
                   <div className="text-gray-400">Map</div>
                   <div className="text-white font-semibold">{selectedMap.name}</div>
                   <div className="text-gray-500">{(selectedMap.distance / 1000).toFixed(1)} km</div>
+                  <div className="text-gray-500 mt-1 capitalize">
+                    Traffic: {TRAFFIC_LEVEL_LABELS[lobby.settings.trafficLevel ?? DEFAULT_TRAFFIC_LEVEL]}
+                  </div>
                 </div>
               )}
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 [overflow-anchor:none]">
               {Array.from({ length: lobby.settings.maxPlayers }).map((_, i) => {
                 const player = lobby.players[i];
                 return (
@@ -421,14 +440,13 @@ export function LobbyScreen() {
         <div className="space-y-4">
           <Card className="flex flex-col h-80">
             <h3 className="font-display font-semibold text-saffron mb-2">Chat</h3>
-            <div className="flex-1 overflow-y-auto space-y-2 text-sm">
+            <div ref={chatContainerRef} className="flex-1 overflow-y-auto space-y-2 text-sm">
               {chat.map((c) => (
                 <div key={c.id}>
                   <span className="text-saffron font-semibold">{c.username}: </span>
                   <span className="text-gray-300">{c.message}</span>
                 </div>
               ))}
-              <div ref={chatEndRef} />
             </div>
             <div className="flex gap-2 mt-2">
               {['👍', '🔥', '🏁', '😂', '💪'].map((e) => (

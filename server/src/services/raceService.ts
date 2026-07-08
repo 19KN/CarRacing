@@ -29,6 +29,7 @@ export class RaceService {
       players: lobby.players.map((p, i) => this.createPlayerState(p, i, lobby.players.length)),
       weather,
       timeOfDay,
+      trafficLevel: lobby.settings.trafficLevel,
       startedAt: Date.now(),
       seed: Math.floor(Math.random() * 1000000),
       trafficSignalState: 'green',

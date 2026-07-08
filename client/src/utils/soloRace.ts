@@ -30,3 +30,7 @@ export function buildSoloRaceResult(
 export function getFinishLineZ(raceDistance: number, startZ = 20): number {
   return startZ - raceDistance;
 }
+
+export function getMetersToFinishLine(positionZ: number, raceDistance: number, startZ = 20): number {
+  return Math.max(0, positionZ - getFinishLineZ(raceDistance, startZ));
+}

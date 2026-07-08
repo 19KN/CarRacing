@@ -7,7 +7,7 @@ import { lazy, Suspense } from 'react';
 import { LoadingSpinner } from '../../components/ui';
 
 const GameScene = lazy(() => import('../../game/core/GameScene').then((m) => ({ default: m.GameScene })));
-import { getMapById, DEFAULT_MAP_ID, getMapRaceDistance, getRaceSpawnPosition, PlayerFinishedPayload } from '@indian-racing/shared';
+import { getMapById, DEFAULT_MAP_ID, getMapRaceDistance, getRaceSpawnPosition, PlayerFinishedPayload, DEFAULT_TRAFFIC_LEVEL } from '@indian-racing/shared';
 import { getSocket, SocketEvents } from '../../utils/socket';
 import { formatDistance, formatTime } from '../../utils/progression';
 import { buildSoloRaceResult } from '../../utils/soloRace';
@@ -84,7 +84,10 @@ export function RaceHUD() {
   useEffect(() => {
     const socket = getSocket();
     socket.on(SocketEvents.PLAYER_FINISHED, (payload: PlayerFinishedPayload) => {
-      playCelebration();
+      const me = localPlayerId || profile.id;
+      if (payload.playerId !== me) {
+        playCelebration();
+      }
       setPlayerFinished({ standings: payload.standings, latestFinisherId: payload.playerId });
     });
     socket.on(SocketEvents.RACE_FINISH, (data: { results: Parameters<typeof setResults>[0] }) => {
@@ -185,7 +188,7 @@ export function RaceHUD() {
 
       <TouchControls />
 
-      {(showFinishOverlay || (isSolo && isRaceFinished && finishTimeMs !== null)) && (
+      {(showFinishOverlay || (isRaceFinished && finishTimeMs !== null)) && (
         <FinishCelebration
           finishTimeMs={finishTimeMs ?? undefined}
           mapName={map?.name}
@@ -217,6 +220,7 @@ export function SoloRace() {
   const selectedVehicleId = useLobbyStore((s) => s.selectedVehicleId);
   const selectedVehicleColor = useLobbyStore((s) => s.selectedVehicleColor);
   const selectedMapId = useLobbyStore((s) => s.selectedMapId);
+  const selectedTrafficLevel = useLobbyStore((s) => s.selectedTrafficLevel);
   const profile = useAuthStore((s) => s.profile);
 
   useEffect(() => {
@@ -248,13 +252,14 @@ export function SoloRace() {
       }],
       weather: map?.weatherPool[0] ?? 'clear',
       timeOfDay: map?.defaultTimeOfDay ?? 'morning',
+      trafficLevel: selectedTrafficLevel || DEFAULT_TRAFFIC_LEVEL,
       startedAt: Date.now(),
       seed: 42,
       trafficSignalState: 'green',
       trafficSignalTimer: 0,
     });
     setWeather(map?.weatherPool[0] ?? 'clear', map?.defaultTimeOfDay ?? 'morning');
-  }, [profile.favoriteVehicle, profile.id, profile.username, selectedMapId, selectedVehicleColor, selectedVehicleId, setRace, setWeather]);
+  }, [profile.favoriteVehicle, profile.id, profile.username, selectedMapId, selectedTrafficLevel, selectedVehicleColor, selectedVehicleId, setRace, setWeather]);
 
   return <RaceHUD />;
 }

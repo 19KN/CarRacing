@@ -59,7 +59,7 @@ router.get('/achievements', (_req: Request, res: Response) => {
 
 router.post('/lobby/create', authMiddleware, (req: Request, res: Response) => {
   const user = (req as Request & { user: { playerId: string; username: string } }).user;
-  const { maxPlayers = 4, avatar = '🏎️', mapId } = req.body;
+  const { maxPlayers = 4, avatar = '🏎️', mapId, trafficLevel } = req.body;
   const validSizes: MaxPlayers[] = [2, 4, 8, 16];
   const size = validSizes.includes(maxPlayers) ? maxPlayers : 4;
   const validMap = MAPS.some((m) => m.id === mapId) ? mapId : undefined;
@@ -71,6 +71,7 @@ router.post('/lobby/create', authMiddleware, (req: Request, res: Response) => {
     size,
     '',
     validMap,
+    trafficLevel,
   );
   res.json({ lobby });
 });

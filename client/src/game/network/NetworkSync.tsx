@@ -1,7 +1,8 @@
 import { useRef, useEffect } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-import { getVehicleById, DEFAULT_VEHICLE_ID, PlayerRamPayload } from '@indian-racing/shared';
+import { getVehicleById, DEFAULT_VEHICLE_ID, PlayerRamPayload, getMapById, DEFAULT_MAP_ID, getMapRaceDistance, RACE_START_Z } from '@indian-racing/shared';
+import { getMetersToFinishLine } from '../../utils/soloRace';
 import { getSocket, SocketEvents } from '../../utils/socket';
 import { audioManager } from '../audio/AudioManager';
 import { useAuthStore, useRaceStore, useLobbyStore } from '../../stores';
@@ -121,6 +122,7 @@ export function RemotePlayer({
   vehicleColor,
   initialPosition,
   initialRotation,
+  mapId,
 }: {
   playerId: string;
   username: string;
@@ -128,14 +130,27 @@ export function RemotePlayer({
   vehicleColor: string;
   initialPosition: { x: number; y: number; z: number };
   initialRotation: number;
+  mapId: string;
 }) {
   const remotePlayers = useRaceStore((s) => s.remotePlayers);
+  const rankings = useRaceStore((s) => s.rankings);
+  const isRaceFinished = useRaceStore((s) => s.isRaceFinished);
+  const localPlayerId = useLobbyStore((s) => s.localPlayerId) || useAuthStore((s) => s.profile.id);
   const groupRef = useRef<THREE.Group>(null);
   const targetPos = useRef(new THREE.Vector3(initialPosition.x, initialPosition.y, initialPosition.z));
   const targetRot = useRef(initialRotation);
   const config = getVehicleById(vehicleId) || getVehicleById(DEFAULT_VEHICLE_ID)!;
+  const raceDistance = getMapRaceDistance(getMapById(mapId) || getMapById(DEFAULT_MAP_ID)!);
 
   const remote = remotePlayers[playerId];
+  const remoteRanking = rankings.find((r) => r.playerId === playerId);
+  const localRanking = rankings.find((r) => r.playerId === localPlayerId);
+  const localFinished = isRaceFinished || localRanking?.finished === true;
+  const remoteFinished = remoteRanking?.finished === true;
+  const positionZ = remote?.position.z ?? initialPosition.z;
+  const metersToFinish = localFinished && !remoteFinished
+    ? Math.round(getMetersToFinishLine(positionZ, raceDistance, RACE_START_Z))
+    : null;
 
   useFrame((_, delta) => {
     updatePlayerRams(delta);
@@ -163,7 +178,7 @@ export function RemotePlayer({
       rotation={[0, initialRotation, 0]}
     >
       <VehicleMesh config={config} color={vehicleColor} />
-      <PlayerNameLabel name={username} />
+      <PlayerNameLabel name={username} metersToFinish={metersToFinish} />
     </group>
   );
 }

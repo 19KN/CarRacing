@@ -1,6 +1,7 @@
 import {
   PlayerProfile, GameSettings, Lobby, RaceState, ChatMessage,
   RaceResult, LeaderboardEntry, VehicleConfig, MapConfig,
+  TrafficLevel, DEFAULT_TRAFFIC_LEVEL,
 } from '@indian-racing/shared';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
@@ -100,10 +101,11 @@ interface LobbyState {
   selectedVehicleId: string;
   selectedVehicleColor: string;
   selectedMapId: string;
+  selectedTrafficLevel: TrafficLevel;
   setLobby: (lobby: Lobby | null) => void;
   setGamingId: (id: string) => void;
   addChat: (msg: ChatMessage) => void;
-  updateMySelection: (vehicleId?: string, vehicleColor?: string, mapId?: string) => void;
+  updateMySelection: (vehicleId?: string, vehicleColor?: string, mapId?: string, trafficLevel?: TrafficLevel) => void;
   reset: () => void;
 }
 
@@ -125,30 +127,38 @@ export const useLobbyStore = create<LobbyState>((set, get) => ({
   selectedVehicleId: DEFAULT_VEHICLE_ID,
   selectedVehicleColor: '#FF9933',
   selectedMapId: DEFAULT_MAP_ID,
+  selectedTrafficLevel: DEFAULT_TRAFFIC_LEVEL,
   setLobby: (lobby) => {
     const localPlayerId = resolveLocalPlayerId(lobby);
     const me = lobby?.players.find((p) => p.id === localPlayerId);
+    const prev = get();
+    const nextChat = lobby?.chat || [];
+    const lastPrev = prev.chat[prev.chat.length - 1]?.id;
+    const lastNext = nextChat[nextChat.length - 1]?.id;
+    const chatChanged = nextChat.length !== prev.chat.length || lastNext !== lastPrev;
     set({
       lobby,
-      chat: lobby?.chat || [],
+      ...(chatChanged ? { chat: nextChat } : {}),
       isHost: lobby?.players.some((p) => p.isHost && p.id === localPlayerId) || false,
       localPlayerId,
-      selectedVehicleId: me?.vehicleId ?? get().selectedVehicleId,
-      selectedVehicleColor: me?.vehicleColor ?? get().selectedVehicleColor,
+      selectedVehicleId: me?.vehicleId ?? prev.selectedVehicleId,
+      selectedVehicleColor: me?.vehicleColor ?? prev.selectedVehicleColor,
     });
   },
   setGamingId: (id) => set({ gamingId: id }),
   addChat: (msg) => set({ chat: [...get().chat, msg] }),
-  updateMySelection: (vehicleId, vehicleColor, mapId) => {
+  updateMySelection: (vehicleId, vehicleColor, mapId, trafficLevel) => {
     const { lobby, localPlayerId } = get();
     const playerId = localPlayerId || useAuthStore.getState().profile.id;
     const nextVehicleId = vehicleId ?? get().selectedVehicleId;
     const nextColor = vehicleColor ?? get().selectedVehicleColor;
     const nextMapId = mapId ?? get().selectedMapId;
+    const nextTrafficLevel = trafficLevel ?? get().selectedTrafficLevel;
     set({
       selectedVehicleId: nextVehicleId,
       selectedVehicleColor: nextColor,
       selectedMapId: nextMapId,
+      selectedTrafficLevel: nextTrafficLevel,
       lobby: lobby
         ? {
             ...lobby,
@@ -174,6 +184,7 @@ export const useLobbyStore = create<LobbyState>((set, get) => ({
     selectedVehicleId: DEFAULT_VEHICLE_ID,
     selectedVehicleColor: '#FF9933',
     selectedMapId: DEFAULT_MAP_ID,
+    selectedTrafficLevel: DEFAULT_TRAFFIC_LEVEL,
   }),
 }));
 
@@ -335,7 +346,7 @@ export const useRaceStore = create<RaceStateStore>((set, get) => ({
   setPosition: (position) => set({ position }),
   setSpeed: (speed) => set({ speed }),
   setDistanceRemaining: (distanceRemaining) => set({ distanceRemaining }),
-  setRaceFinished: (finishTimeMs) => set({ isRaceFinished: true, finishTimeMs }),
+  setRaceFinished: (finishTimeMs) => set({ isRaceFinished: true, finishTimeMs, showFinishOverlay: true }),
   setMaxRaceSpeed: (maxRaceSpeed) => set({ maxRaceSpeed }),
   setWeather: (weather, timeOfDay) => set({ weather, timeOfDay }),
   updateRemotePlayer: (id, data) => set({ remotePlayers: { ...get().remotePlayers, [id]: data } }),

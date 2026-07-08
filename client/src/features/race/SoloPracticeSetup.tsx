@@ -2,7 +2,8 @@ import { useState, lazy, Suspense } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button, Card } from '../../components/ui';
 import { useAuthStore, useLobbyStore } from '../../stores';
-import { VEHICLES, VEHICLE_COLORS, MAPS, DEFAULT_MAP_ID } from '@indian-racing/shared';
+import { VEHICLES, VEHICLE_COLORS, MAPS, DEFAULT_MAP_ID, DEFAULT_TRAFFIC_LEVEL, TrafficLevel } from '@indian-racing/shared';
+import { TrafficLevelPicker } from '../../components/ui/TrafficLevelPicker';
 
 const VehiclePreview = lazy(() => import('../garage/VehiclePreview').then((m) => ({ default: m.VehiclePreview })));
 
@@ -12,17 +13,19 @@ export function SoloPracticeSetup() {
   const storedVehicleId = useLobbyStore((s) => s.selectedVehicleId);
   const storedColor = useLobbyStore((s) => s.selectedVehicleColor);
   const storedMapId = useLobbyStore((s) => s.selectedMapId);
+  const storedTrafficLevel = useLobbyStore((s) => s.selectedTrafficLevel);
   const navigate = useNavigate();
 
   const [vehicleId, setVehicleId] = useState(storedVehicleId || profile.favoriteVehicle);
   const [color, setColor] = useState(storedColor || profile.unlockedColors[0] || VEHICLE_COLORS[0]);
   const [mapId, setMapId] = useState(storedMapId || DEFAULT_MAP_ID);
+  const [trafficLevel, setTrafficLevel] = useState<TrafficLevel>(storedTrafficLevel || DEFAULT_TRAFFIC_LEVEL);
 
   const selectedVehicle = VEHICLES.find((v) => v.id === vehicleId);
   const selectedMap = MAPS.find((m) => m.id === mapId);
 
   const handleStart = () => {
-    updateMySelection(vehicleId, color, mapId);
+    updateMySelection(vehicleId, color, mapId, trafficLevel);
     navigate('/race/solo/play');
   };
 
@@ -57,6 +60,12 @@ export function SoloPracticeSetup() {
                 Selected: <span className="text-saffron">{selectedMap.name}</span>
               </p>
             )}
+
+            <TrafficLevelPicker
+              value={trafficLevel}
+              onChange={setTrafficLevel}
+              className="mb-6"
+            />
 
             <h3 className="font-display font-semibold text-saffron mb-3">Select Vehicle</h3>
             <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 max-h-72 overflow-y-auto">
