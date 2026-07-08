@@ -111,6 +111,24 @@ export function setupSocketHandlers(io: Server): void {
       }
     });
 
+    socket.on(SocketEvents.START_RACE, () => {
+      const { gamingId, playerId } = socket.data as SocketData;
+      if (!gamingId) return;
+      const lobby = lobbyService.getLobby(gamingId);
+      if (!lobby) return;
+      if (lobby.hostId !== playerId) {
+        socket.emit(SocketEvents.ERROR, { message: 'Only the host can start the race' });
+        return;
+      }
+      if (!lobbyService.canStartRace(gamingId)) {
+        socket.emit(SocketEvents.ERROR, {
+          message: 'Need at least 2 players in the lobby and everyone must click Ready',
+        });
+        return;
+      }
+      startCountdown(io, gamingId, lobby);
+    });
+
     socket.on(SocketEvents.POSITION_UPDATE, (data) => {
       const { gamingId } = socket.data as SocketData;
       if (!gamingId) return;
@@ -142,28 +160,33 @@ export function setupSocketHandlers(io: Server): void {
       if (!gamingId) return;
       const race = raceService.handleCollision(gamingId, data);
       if (race) {
-        const affectedIds = new Set([data.playerId]);
-        if (data.targetPlayerId) affectedIds.add(data.targetPlayerId);
-        for (const id of affectedIds) {
-          const player = race.players.find((p) => p.playerId === id);
-          if (player) {
-            io.to(gamingId).emit(SocketEvents.HEALTH_UPDATE, {
-              playerId: id,
-              health: player.health,
-              isRespawning: player.isRespawning,
-            });
-          }
+        const player = race.players.find((p) => p.playerId === data.playerId);
+        if (player) {
+          io.to(gamingId).emit(SocketEvents.HEALTH_UPDATE, {
+            playerId: data.playerId,
+            health: player.health,
+            isRespawning: player.isRespawning,
+          });
         }
+      }
+    });
+
+    socket.on(SocketEvents.PLAYER_RAM, (data) => {
+      const { gamingId } = socket.data as SocketData;
+      if (!gamingId) return;
+      const race = raceService.handlePlayerRam(gamingId, data);
+      if (race) {
+        io.to(gamingId).emit(SocketEvents.PLAYER_RAM, data);
       }
     });
 
     socket.on(SocketEvents.CHECKPOINT, (data: { checkpointIndex: number }) => {
       const { gamingId, playerId } = socket.data as SocketData;
       if (!gamingId) return;
-      const race = raceService.handleCheckpoint(gamingId, playerId, data.checkpointIndex);
-      if (race) {
+      const result = raceService.handleCheckpoint(gamingId, playerId, data.checkpointIndex);
+      if (result) {
         io.to(gamingId).emit(SocketEvents.POSITION_RANK, {
-          rankings: race.players.map((p) => ({
+          rankings: result.race.players.map((p) => ({
             playerId: p.playerId,
             username: p.username,
             rank: p.rank,
@@ -171,29 +194,25 @@ export function setupSocketHandlers(io: Server): void {
             finished: p.finished,
           })),
         });
-      }
-      if (race?.status === 'finished') {
-        const results = raceService.calculateResults(gamingId);
-        io.to(gamingId).emit(SocketEvents.RACE_FINISH, { results });
-        cleanupRace(gamingId);
+        if (result.finishPayload) {
+          broadcastPlayerFinished(io, gamingId, result.finishPayload);
+          if (result.finishPayload.allFinished) {
+            finishRace(io, gamingId);
+          }
+        }
       }
     });
 
     socket.on(SocketEvents.RACE_FINISH, () => {
       const { gamingId, playerId } = socket.data as SocketData;
       if (!gamingId) return;
-      const race = raceService.getRace(gamingId);
-      if (!race) return;
-      const player = race.players.find((p) => p.playerId === playerId);
-      if (player && !player.finished) {
-        player.finished = true;
-        player.finishTime = Date.now() - (race.startedAt || Date.now());
-      }
-      if (race.players.every((p) => p.finished)) {
-        race.status = 'finished';
-        const results = raceService.calculateResults(gamingId);
-        io.to(gamingId).emit(SocketEvents.RACE_FINISH, { results });
-        cleanupRace(gamingId);
+      const finishResult = raceService.handlePlayerFinish(gamingId, playerId);
+      if (!finishResult) return;
+
+      broadcastPlayerFinished(io, gamingId, finishResult.payload);
+
+      if (finishResult.payload.allFinished) {
+        finishRace(io, gamingId);
       }
     });
 
@@ -335,6 +354,16 @@ function startRace(io: Server, gamingId: string, lobby: Lobby): void {
   }, 1000 / config.serverTickRate);
 
   raceTickIntervals.set(gamingId, tickInterval);
+}
+
+function broadcastPlayerFinished(io: Server, gamingId: string, payload: import('@indian-racing/shared').PlayerFinishedPayload): void {
+  io.to(gamingId).emit(SocketEvents.PLAYER_FINISHED, payload);
+}
+
+function finishRace(io: Server, gamingId: string): void {
+  const results = raceService.calculateResults(gamingId);
+  io.to(gamingId).emit(SocketEvents.RACE_FINISH, { results });
+  cleanupRace(gamingId);
 }
 
 function cleanupRace(gamingId: string): void {

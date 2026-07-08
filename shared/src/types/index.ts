@@ -186,6 +186,25 @@ export interface CollisionPayload {
   severity: CollisionSeverity;
   position: Vector3;
   targetPlayerId?: string;
+  /** traffic = AI cars on road; obstacle = median/trees */
+  collisionType?: 'traffic' | 'obstacle';
+}
+
+export interface PlayerRamPayload {
+  attackerId: string;
+  targetId: string;
+  start: Vector3;
+  end: Vector3;
+  speedKmh: number;
+}
+
+export interface PlayerFinishedPayload {
+  playerId: string;
+  username: string;
+  rank: number;
+  finishTime: number;
+  standings: { playerId: string; username: string; rank: number; finishTime: number }[];
+  allFinished: boolean;
 }
 
 export interface LeaderboardEntry {

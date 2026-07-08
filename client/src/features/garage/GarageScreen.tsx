@@ -7,6 +7,8 @@ import { VehiclePreview } from './VehiclePreview';
 
 function vehicleIcon(category: string, id: string) {
   if (id === 'cruise_ship') return '🚢';
+  if (id === 'f1_car') return '🏎️';
+  if (id === 'dodge_challenger' || id === 'bursley_defiance') return '🏁';
   if (category === 'two_wheeler') return '🏍️';
   if (category === 'commercial') return '🚛';
   if (id === 'jeep') return '🛻';

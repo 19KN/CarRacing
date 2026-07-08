@@ -57,7 +57,10 @@ export function CreateLobby() {
         {step === 'players' && (
           <>
             <h2 className="text-2xl font-display font-bold text-saffron mb-2">Create Lobby</h2>
-            <p className="text-sm text-gray-400 mb-6">Step 1 — How many players?</p>
+            <p className="text-sm text-gray-400 mb-2">Step 1 — Max players (lobby size)</p>
+            <p className="text-xs text-gray-500 mb-6">
+              You can start with fewer friends. Empty slots stay open — e.g. pick 4 but race with 3.
+            </p>
             <div className="grid grid-cols-4 gap-2 mb-6">
               {([2, 4, 8, 16] as MaxPlayers[]).map((n) => (
                 <button
@@ -78,7 +81,7 @@ export function CreateLobby() {
         {step === 'map' && (
           <>
             <h2 className="text-2xl font-display font-bold text-saffron mb-2">Choose Map</h2>
-            <p className="text-sm text-gray-400 mb-4">Step 2 — Pick the race track ({maxPlayers} players)</p>
+            <p className="text-sm text-gray-400 mb-4">Step 2 — Pick the race track (up to {maxPlayers} players)</p>
             <div className="grid grid-cols-2 gap-2 max-h-64 overflow-y-auto mb-4">
               {MAPS.map((m) => (
                 <button
@@ -231,8 +234,11 @@ export function LobbyScreen() {
   const myPlayer = lobby.players.find((p) => p.id === (localPlayerId || profile.id));
   const isHost = myPlayer?.isHost;
   const readyCount = lobby.players.filter((p) => p.isReady).length;
-  const allReady = lobby.players.length >= 2 && lobby.players.every((p) => p.isReady);
-  const waitingForPlayers = lobby.players.length < 2;
+  const joinedCount = lobby.players.length;
+  const openSlots = lobby.settings.maxPlayers - joinedCount;
+  const allReady = joinedCount >= 2 && lobby.players.every((p) => p.isReady);
+  const waitingForPlayers = joinedCount < 2;
+  const canStartNow = allReady;
   const selectedMap = MAPS.find((m) => m.id === lobby.settings.mapId);
   const selectedVehicle = VEHICLES.find((v) => v.id === myPlayer?.vehicleId);
   const vehicles = VEHICLES;
@@ -263,6 +269,10 @@ export function LobbyScreen() {
 
   const toggleReady = () => {
     getSocket().emit(SocketEvents.SET_READY, { isReady: !myPlayer?.isReady });
+  };
+
+  const startRaceNow = () => {
+    getSocket().emit(SocketEvents.START_RACE);
   };
 
   const selectVehicle = (vehicleId: string) => {
@@ -324,9 +334,18 @@ export function LobbyScreen() {
               <div>
                 <h2 className="text-xl font-display font-bold text-saffron">Lobby</h2>
                 <div className="text-sm text-gray-400 mt-1">
-                  {lobby.players.length}/{lobby.settings.maxPlayers} players ·{' '}
+                  {joinedCount}/{lobby.settings.maxPlayers} joined
+                  {openSlots > 0 && (
+                    <span className="text-gray-500"> · {openSlots} open slot{openSlots === 1 ? '' : 's'}</span>
+                  )}
+                  {' · '}
                   <span className="capitalize text-saffron">{lobby.status}</span>
                 </div>
+                {joinedCount >= 2 && openSlots > 0 && (
+                  <p className="text-xs text-indiaGreen mt-1">
+                    Race can start with {joinedCount} players — empty slots are optional
+                  </p>
+                )}
               </div>
               {selectedMap && (
                 <div className="text-right text-sm">
@@ -363,7 +382,7 @@ export function LobbyScreen() {
                         {player.isHost && <div className="text-xs text-saffron">Host</div>}
                       </>
                     ) : (
-                      <div className="text-gray-600 py-4 text-xs">Waiting...</div>
+                      <div className="text-gray-600 py-4 text-xs">Open slot</div>
                     )}
                   </div>
                 );
@@ -439,15 +458,26 @@ export function LobbyScreen() {
               <p className="text-gray-400">Waiting for friends to join...</p>
             )}
             {!waitingForPlayers && !allReady && (
-              <p className="text-gray-400">{readyCount}/{lobby.players.length} players ready</p>
+              <p className="text-gray-400">
+                {readyCount}/{joinedCount} joined players ready
+                {openSlots > 0 ? ' — no need to wait for open slots' : ''}
+              </p>
             )}
             {allReady && (
-              <p className="text-indiaGreen animate-pulse font-semibold">All players ready! Starting countdown...</p>
+              <p className="text-indiaGreen animate-pulse font-semibold">
+                All {joinedCount} players ready! Starting countdown...
+              </p>
             )}
             {isHost && !waitingForPlayers && !myPlayer?.isReady && (
-              <p className="text-xs text-saffron">Everyone ready? Click Ready to start the race!</p>
+              <p className="text-xs text-saffron">Everyone joined must click Ready to start</p>
             )}
           </div>
+
+          {isHost && canStartNow && (
+            <Button onClick={startRaceNow} className="w-full game-btn-primary">
+              Start Race ({joinedCount} players)
+            </Button>
+          )}
 
           <Button
             onClick={toggleReady}

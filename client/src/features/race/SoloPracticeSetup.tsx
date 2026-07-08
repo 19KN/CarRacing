@@ -11,17 +11,18 @@ export function SoloPracticeSetup() {
   const updateMySelection = useLobbyStore((s) => s.updateMySelection);
   const storedVehicleId = useLobbyStore((s) => s.selectedVehicleId);
   const storedColor = useLobbyStore((s) => s.selectedVehicleColor);
+  const storedMapId = useLobbyStore((s) => s.selectedMapId);
   const navigate = useNavigate();
 
   const [vehicleId, setVehicleId] = useState(storedVehicleId || profile.favoriteVehicle);
   const [color, setColor] = useState(storedColor || profile.unlockedColors[0] || VEHICLE_COLORS[0]);
-  const [mapId] = useState(DEFAULT_MAP_ID);
+  const [mapId, setMapId] = useState(storedMapId || DEFAULT_MAP_ID);
 
   const selectedVehicle = VEHICLES.find((v) => v.id === vehicleId);
   const selectedMap = MAPS.find((m) => m.id === mapId);
 
   const handleStart = () => {
-    updateMySelection(vehicleId, color);
+    updateMySelection(vehicleId, color, mapId);
     navigate('/race/solo/play');
   };
 
@@ -31,10 +32,29 @@ export function SoloPracticeSetup() {
         <div className="lg:col-span-2 space-y-4">
           <Card>
             <h2 className="text-2xl font-display font-bold text-saffron mb-1">Solo Practice</h2>
-            <p className="text-sm text-gray-400 mb-4">Choose your vehicle, then hit the road</p>
+            <p className="text-sm text-gray-400 mb-4">Choose your map and vehicle, then hit the road</p>
+
+            <h3 className="font-display font-semibold text-saffron mb-3">Choose Map</h3>
+            <div className="grid grid-cols-2 gap-2 mb-4">
+              {MAPS.map((m) => (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() => setMapId(m.id)}
+                  className={`p-3 rounded-lg text-xs text-left transition-all ${
+                    mapId === m.id
+                      ? 'bg-saffron/20 border-2 border-saffron'
+                      : 'bg-game-dark border border-game-border hover:border-saffron/50'
+                  }`}
+                >
+                  <div className="font-semibold">{m.name}</div>
+                  <div className="text-gray-500 capitalize">{m.roadType} · {(m.distance / 1000).toFixed(1)} km</div>
+                </button>
+              ))}
+            </div>
             {selectedMap && (
               <p className="text-xs text-gray-500 mb-4">
-                Track: <span className="text-white">{selectedMap.name}</span> · {(selectedMap.distance / 1000).toFixed(1)} km
+                Selected: <span className="text-saffron">{selectedMap.name}</span>
               </p>
             )}
 

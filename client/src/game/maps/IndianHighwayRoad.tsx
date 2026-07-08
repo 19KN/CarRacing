@@ -18,6 +18,7 @@ export const MEDIAN_MAX_X = MEDIAN_W / 2;
 export const RIGHT_CARRIAGEWAY_MIN_X = MEDIAN_W / 2;
 export const RIGHT_CARRIAGEWAY_MAX_X = MEDIAN_W / 2 + CARRIAGE_W;
 export const TOTAL_ROAD_HALF = CARRIAGE_W + MEDIAN_W / 2 + SHOULDER_W;
+export const SIDEWALK_X = TOTAL_ROAD_HALF + SHOULDER_W + SIDEWALK_W / 2;
 const CAR_HALF_WIDTH = 0.95;
 /** Drivable: shoulders, sidewalks, both carriageways, and median */
 const DRIVABLE_HALF = TOTAL_ROAD_HALF + SHOULDER_W + SIDEWALK_W;
@@ -63,23 +64,6 @@ function tex(color: string, noise = false): THREE.CanvasTexture {
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
   t.repeat.set(1, 4);
   return t;
-}
-
-function Tree({ scale = 1, seed = 0 }: { scale?: number; seed?: number }) {
-  const h = (3 + seededRandom(seed) * 2) * scale;
-  const foliageColor = seededRandom(seed + 1) > 0.5 ? '#2d7a2d' : '#3d9a3d';
-  return (
-    <group>
-      <mesh position={[0, h / 2, 0]} castShadow>
-        <cylinderGeometry args={[0.15 * scale, 0.25 * scale, h, 6]} />
-        <meshStandardMaterial color="#5c3d2e" />
-      </mesh>
-      <mesh position={[0, h + 1.2 * scale, 0]} castShadow>
-        <sphereGeometry args={[1.5 * scale, 8, 8]} />
-        <meshStandardMaterial color={foliageColor} roughness={0.9} />
-      </mesh>
-    </group>
-  );
 }
 
 function Building({ type, scale = 1, seed = 0 }: { type: number; scale?: number; seed?: number }) {
@@ -262,28 +246,6 @@ export function IndianHighwayRoad({ points }: { points: { x: number; y: number; 
               <planeGeometry args={[0.1, SEG_LEN]} />
               <meshStandardMaterial color="#eee" side={THREE.DoubleSide} />
             </mesh>
-
-            {/* ── TREES along sidewalk ── */}
-            {i % 3 === 0 && (
-              <>
-                <group position={[-(totalRoadHalf + SHOULDER_W + SIDEWALK_W + 1.5), 0, (seed % 10) - 5]}>
-                  <Tree scale={0.8 + (seed % 5) * 0.1} seed={seed} />
-                </group>
-                <group position={[totalRoadHalf + SHOULDER_W + SIDEWALK_W + 1.5, 0, ((seed + 5) % 10) - 5]}>
-                  <Tree scale={0.9 + (seed % 4) * 0.1} seed={seed + 100} />
-                </group>
-              </>
-            )}
-            {i % 5 === 2 && (
-              <>
-                <group position={[-(totalRoadHalf + SHOULDER_W + SIDEWALK_W + 3), 0, -10]}>
-                  <Tree scale={1.1} seed={seed + 200} />
-                </group>
-                <group position={[totalRoadHalf + SHOULDER_W + SIDEWALK_W + 3, 0, 8]}>
-                  <Tree scale={1} seed={seed + 201} />
-                </group>
-              </>
-            )}
 
             {/* ── BUILDINGS near road ── */}
             {i % 4 === 0 && (

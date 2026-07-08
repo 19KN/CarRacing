@@ -201,6 +201,36 @@ export const VEHICLES: VehicleConfig[] = [
     unlockCost: 0,
     description: 'Massive luxury cruise ship — yes, on the highway',
   },
+  {
+    id: 'f1_car',
+    name: 'F1 Car',
+    category: 'special',
+    stats: { maxSpeed: 300, acceleration: 100, handling: 98, weight: 650, brakePower: 98, health: 100 },
+    modelKey: 'f1_car',
+    sounds: { engine: 'formula_engine', horn: 'horn_sports', brake: 'brake_sport', collision: 'hit_light', skid: 'skid_sport' },
+    unlockCost: 0,
+    description: 'Open-wheel Formula racing car built for the track',
+  },
+  {
+    id: 'dodge_challenger',
+    name: 'Dodge Challenger',
+    category: 'car',
+    stats: { maxSpeed: 300, acceleration: 95, handling: 82, weight: 1800, brakePower: 92, health: 100 },
+    modelKey: 'dodge_challenger',
+    sounds: { engine: 'sports_engine', horn: 'horn_car', brake: 'brake_sport', collision: 'hit_medium', skid: 'skid_sport' },
+    unlockCost: 0,
+    description: '2015 American muscle coupe with raw power',
+  },
+  {
+    id: 'bursley_defiance',
+    name: '1972 Bursley Defiance',
+    category: 'car',
+    stats: { maxSpeed: 280, acceleration: 88, handling: 78, weight: 1700, brakePower: 85, health: 100 },
+    modelKey: 'bursley_defiance',
+    sounds: { engine: 'car_large', horn: 'horn_car', brake: 'brake_heavy', collision: 'hit_heavy', skid: 'skid_heavy' },
+    unlockCost: 0,
+    description: 'Classic 1972 muscle car with vintage road presence',
+  },
 ];
 
 export const DEFAULT_VEHICLE_ID = 'hatchback';

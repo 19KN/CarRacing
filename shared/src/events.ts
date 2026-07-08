@@ -7,13 +7,16 @@ export const SocketEvents = {
   SELECT_COLOR: 'selectColor',
   SELECT_MAP: 'selectMap',
   SET_READY: 'setReady',
+  START_RACE: 'startRace',
   POSITION_UPDATE: 'positionUpdate',
   COLLISION: 'collision',
+  PLAYER_RAM: 'playerRam',
   HORN: 'horn',
   NITRO: 'nitro',
   RECONNECT: 'reconnect',
   CHECKPOINT: 'checkpoint',
   RACE_FINISH: 'raceFinish',
+  PLAYER_FINISHED: 'playerFinished',
   EMOTE: 'emote',
 
   // Server -> Client

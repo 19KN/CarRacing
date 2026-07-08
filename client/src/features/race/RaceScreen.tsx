@@ -7,11 +7,12 @@ import { lazy, Suspense } from 'react';
 import { LoadingSpinner } from '../../components/ui';
 
 const GameScene = lazy(() => import('../../game/core/GameScene').then((m) => ({ default: m.GameScene })));
-import { getMapById, DEFAULT_MAP_ID, getMapRaceDistance, getRaceSpawnPosition } from '@indian-racing/shared';
+import { getMapById, DEFAULT_MAP_ID, getMapRaceDistance, getRaceSpawnPosition, PlayerFinishedPayload } from '@indian-racing/shared';
 import { getSocket, SocketEvents } from '../../utils/socket';
 import { formatDistance, formatTime } from '../../utils/progression';
 import { buildSoloRaceResult } from '../../utils/soloRace';
 import { TouchControls } from './TouchControls';
+import { useAudioManager } from '../../game/audio/AudioManager';
 export function RaceHUD() {
   const health = useRaceStore((s) => s.health);
   const speed = useRaceStore((s) => s.speed);
@@ -20,6 +21,10 @@ export function RaceHUD() {
   const distanceRemaining = useRaceStore((s) => s.distanceRemaining);
   const isRaceFinished = useRaceStore((s) => s.isRaceFinished);
   const finishTimeMs = useRaceStore((s) => s.finishTimeMs);
+  const finishStandings = useRaceStore((s) => s.finishStandings);
+  const showFinishOverlay = useRaceStore((s) => s.showFinishOverlay);
+  const setPlayerFinished = useRaceStore((s) => s.setPlayerFinished);
+  const setShowFinishOverlay = useRaceStore((s) => s.setShowFinishOverlay);
   const maxRaceSpeed = useRaceStore((s) => s.maxRaceSpeed);
   const isPaused = useRaceStore((s) => s.isPaused);
   const setPaused = useRaceStore((s) => s.setPaused);
@@ -42,8 +47,10 @@ export function RaceHUD() {
   const vehicleColor = myRacePlayer?.vehicleColor || myLobbyPlayer?.vehicleColor || selectedVehicleColor || '#FF9933';
   const isSolo = !race || race.players.length < 2;
   const [elapsedMs, setElapsedMs] = useState(0);
+  const { playCelebration } = useAudioManager();
 
   const handleCelebrationComplete = useCallback(() => {
+    setShowFinishOverlay(false);
     if (!isSolo || !finishTimeMs || !map) return;
     setResults(buildSoloRaceResult(profile, {
       finishTimeMs,
@@ -52,7 +59,7 @@ export function RaceHUD() {
       health,
     }));
     navigate('/results');
-  }, [isSolo, finishTimeMs, map, profile, maxRaceSpeed, health, setResults, navigate]);
+  }, [isSolo, finishTimeMs, map, profile, maxRaceSpeed, health, setResults, navigate, setShowFinishOverlay]);
 
   useEffect(() => {
     if (map) setDistanceRemaining(getMapRaceDistance(map));
@@ -68,12 +75,19 @@ export function RaceHUD() {
 
   useEffect(() => {
     const socket = getSocket();
+    socket.on(SocketEvents.PLAYER_FINISHED, (payload: PlayerFinishedPayload) => {
+      playCelebration();
+      setPlayerFinished({ standings: payload.standings, latestFinisherId: payload.playerId });
+    });
     socket.on(SocketEvents.RACE_FINISH, (data: { results: Parameters<typeof setResults>[0] }) => {
       setResults(data.results);
       navigate('/results');
     });
-    return () => { socket.off(SocketEvents.RACE_FINISH); };
-  }, []);
+    return () => {
+      socket.off(SocketEvents.PLAYER_FINISHED);
+      socket.off(SocketEvents.RACE_FINISH);
+    };
+  }, [navigate, playCelebration, setPlayerFinished, setResults]);
 
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
@@ -94,7 +108,7 @@ export function RaceHUD() {
     <div className="relative w-full h-screen">
       <Suspense fallback={<div className="w-full h-screen flex items-center justify-center bg-game-dark"><LoadingSpinner message="Loading race..." /></div>}>
         <GameScene
-          key={`${vehicleId}-${vehicleColor}`}
+          key={`${mapId}-${vehicleId}-${vehicleColor}`}
           vehicleId={vehicleId}
           vehicleColor={vehicleColor}
           mapId={mapId}
@@ -154,10 +168,12 @@ export function RaceHUD() {
 
       <TouchControls />
 
-      {isRaceFinished && finishTimeMs !== null && (
+      {(showFinishOverlay || (isSolo && isRaceFinished && finishTimeMs !== null)) && (
         <FinishCelebration
-          finishTimeMs={finishTimeMs}
+          finishTimeMs={finishTimeMs ?? undefined}
           mapName={map?.name}
+          standings={finishStandings}
+          localPlayerId={playerId}
           onComplete={handleCelebrationComplete}
         />
       )}
@@ -183,15 +199,18 @@ export function SoloRace() {
   const setWeather = useRaceStore((s) => s.setWeather);
   const selectedVehicleId = useLobbyStore((s) => s.selectedVehicleId);
   const selectedVehicleColor = useLobbyStore((s) => s.selectedVehicleColor);
+  const selectedMapId = useLobbyStore((s) => s.selectedMapId);
   const profile = useAuthStore((s) => s.profile);
 
   useEffect(() => {
     const vehicleId = selectedVehicleId || profile.favoriteVehicle;
     const vehicleColor = selectedVehicleColor || '#FF9933';
+    const mapId = selectedMapId || DEFAULT_MAP_ID;
+    const map = getMapById(mapId);
     const spawn = getRaceSpawnPosition(0, 1);
     setRace({
       lobbyId: 'solo',
-      mapId: DEFAULT_MAP_ID,
+      mapId,
       status: 'racing',
       players: [{
         playerId: profile.id,
@@ -210,15 +229,15 @@ export function SoloRace() {
         isRespawning: false,
         nitroRemaining: 3,
       }],
-      weather: 'clear',
-      timeOfDay: 'morning',
+      weather: map?.weatherPool[0] ?? 'clear',
+      timeOfDay: map?.defaultTimeOfDay ?? 'morning',
       startedAt: Date.now(),
       seed: 42,
       trafficSignalState: 'green',
       trafficSignalTimer: 0,
     });
-    setWeather('clear', 'morning');
-  }, [profile.favoriteVehicle, profile.id, profile.username, selectedVehicleColor, selectedVehicleId, setRace, setWeather]);
+    setWeather(map?.weatherPool[0] ?? 'clear', map?.defaultTimeOfDay ?? 'morning');
+  }, [profile.favoriteVehicle, profile.id, profile.username, selectedMapId, selectedVehicleColor, selectedVehicleId, setRace, setWeather]);
 
   return <RaceHUD />;
 }

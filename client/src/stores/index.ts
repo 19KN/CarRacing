@@ -4,7 +4,7 @@ import {
 } from '@indian-racing/shared';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { DEFAULT_VEHICLE_ID } from '@indian-racing/shared';
+import { DEFAULT_VEHICLE_ID, DEFAULT_MAP_ID } from '@indian-racing/shared';
 
 const defaultProfile: PlayerProfile = {
   id: '',
@@ -15,7 +15,7 @@ const defaultProfile: PlayerProfile = {
   coins: 500,
   xp: 0,
   level: 1,
-  unlockedVehicles: ['bicycle', 'scooter', 'hatchback', 'cruise_ship'],
+  unlockedVehicles: ['bicycle', 'scooter', 'hatchback', 'cruise_ship', 'f1_car', 'dodge_challenger', 'bursley_defiance'],
   unlockedColors: ['#FF9933', '#FFFFFF', '#138808'],
   unlockedHorns: ['default'],
   unlockedSkins: ['default'],
@@ -99,10 +99,11 @@ interface LobbyState {
   localPlayerId: string;
   selectedVehicleId: string;
   selectedVehicleColor: string;
+  selectedMapId: string;
   setLobby: (lobby: Lobby | null) => void;
   setGamingId: (id: string) => void;
   addChat: (msg: ChatMessage) => void;
-  updateMySelection: (vehicleId?: string, vehicleColor?: string) => void;
+  updateMySelection: (vehicleId?: string, vehicleColor?: string, mapId?: string) => void;
   reset: () => void;
 }
 
@@ -123,6 +124,7 @@ export const useLobbyStore = create<LobbyState>((set, get) => ({
   localPlayerId: '',
   selectedVehicleId: DEFAULT_VEHICLE_ID,
   selectedVehicleColor: '#FF9933',
+  selectedMapId: DEFAULT_MAP_ID,
   setLobby: (lobby) => {
     const localPlayerId = resolveLocalPlayerId(lobby);
     const me = lobby?.players.find((p) => p.id === localPlayerId);
@@ -137,14 +139,16 @@ export const useLobbyStore = create<LobbyState>((set, get) => ({
   },
   setGamingId: (id) => set({ gamingId: id }),
   addChat: (msg) => set({ chat: [...get().chat, msg] }),
-  updateMySelection: (vehicleId, vehicleColor) => {
+  updateMySelection: (vehicleId, vehicleColor, mapId) => {
     const { lobby, localPlayerId } = get();
     const playerId = localPlayerId || useAuthStore.getState().profile.id;
     const nextVehicleId = vehicleId ?? get().selectedVehicleId;
     const nextColor = vehicleColor ?? get().selectedVehicleColor;
+    const nextMapId = mapId ?? get().selectedMapId;
     set({
       selectedVehicleId: nextVehicleId,
       selectedVehicleColor: nextColor,
+      selectedMapId: nextMapId,
       lobby: lobby
         ? {
             ...lobby,
@@ -169,6 +173,7 @@ export const useLobbyStore = create<LobbyState>((set, get) => ({
     localPlayerId: '',
     selectedVehicleId: DEFAULT_VEHICLE_ID,
     selectedVehicleColor: '#FF9933',
+    selectedMapId: DEFAULT_MAP_ID,
   }),
 }));
 
@@ -176,6 +181,8 @@ interface RaceStateStore {
   race: RaceState | null;
   results: RaceResult[] | null;
   rankings: { playerId: string; username: string; rank: number; distanceTraveled: number; finished: boolean }[];
+  finishStandings: { playerId: string; username: string; rank: number; finishTime: number }[];
+  showFinishOverlay: boolean;
   countdown: number | null;
   isPaused: boolean;
   health: number;
@@ -191,6 +198,8 @@ interface RaceStateStore {
   setRace: (race: RaceState | null) => void;
   setResults: (results: RaceResult[] | null) => void;
   setRankings: (rankings: RaceStateStore['rankings']) => void;
+  setPlayerFinished: (payload: { standings: RaceStateStore['finishStandings']; latestFinisherId: string }) => void;
+  setShowFinishOverlay: (show: boolean) => void;
   setCountdown: (v: number | null) => void;
   setPaused: (p: boolean) => void;
   setHealth: (h: number) => void;
@@ -208,6 +217,8 @@ export const useRaceStore = create<RaceStateStore>((set, get) => ({
   race: null,
   results: null,
   rankings: [],
+  finishStandings: [],
+  showFinishOverlay: false,
   countdown: null,
   isPaused: false,
   health: 100,
@@ -255,11 +266,39 @@ export const useRaceStore = create<RaceStateStore>((set, get) => ({
       maxRaceSpeed: 0,
       remotePlayers,
       rankings: initialRankings,
+      finishStandings: [],
+      showFinishOverlay: false,
       position: myPlayer?.rank ?? 1,
     });
   },
   setResults: (results) => set({ results }),
   setRankings: (rankings) => set({ rankings }),
+  setPlayerFinished: ({ standings, latestFinisherId }) => {
+    const localPlayerId = useLobbyStore.getState().localPlayerId || useAuthStore.getState().profile.id;
+    const latest = standings.find((s) => s.playerId === latestFinisherId);
+    const state = get();
+    const updatedRankings = state.rankings.map((r) => {
+      const standing = standings.find((s) => s.playerId === r.playerId);
+      if (standing) return { ...r, rank: standing.rank, finished: true };
+      return r;
+    }).sort((a, b) => {
+      if (a.finished && b.finished) return a.rank - b.rank;
+      if (a.finished) return -1;
+      if (b.finished) return 1;
+      return a.rank - b.rank;
+    });
+    const updates: Partial<RaceStateStore> = {
+      finishStandings: standings,
+      showFinishOverlay: true,
+      rankings: updatedRankings,
+    };
+    if (latestFinisherId === localPlayerId && latest) {
+      updates.isRaceFinished = true;
+      updates.finishTimeMs = latest.finishTime;
+    }
+    set(updates);
+  },
+  setShowFinishOverlay: (showFinishOverlay) => set({ showFinishOverlay }),
   setCountdown: (countdown) => set({ countdown }),
   setPaused: (isPaused) => set({ isPaused }),
   setHealth: (health) => set({ health }),
@@ -271,7 +310,8 @@ export const useRaceStore = create<RaceStateStore>((set, get) => ({
   setWeather: (weather, timeOfDay) => set({ weather, timeOfDay }),
   updateRemotePlayer: (id, data) => set({ remotePlayers: { ...get().remotePlayers, [id]: data } }),
   reset: () => set({
-    race: null, results: null, rankings: [], countdown: null, isPaused: false,
+    race: null, results: null, rankings: [], finishStandings: [], showFinishOverlay: false,
+    countdown: null, isPaused: false,
     health: 100, position: 1, speed: 0, distanceRemaining: 0,
     isRaceFinished: false, finishTimeMs: null, maxRaceSpeed: 0,
     remotePlayers: {},

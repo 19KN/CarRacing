@@ -10,10 +10,12 @@ import { PLAYER_LANE_X } from '../maps/IndianHighwayRoad';
 import { WeatherSystem } from '../weather/WeatherSystem';
 import { TrafficSystem, trafficRegistry } from '../traffic/TrafficSystem';
 import { findTrafficCollision, getCollisionDamage } from '../traffic/trafficCollision';
-import { findPlayerCollision } from '../network/playerCollision';
+import { findPlayerCollision, computePlayerRamLanding } from '../network/playerCollision';
+import { triggerPlayerRam, updatePlayerRams, getPlayerRamPosition } from '../network/playerRam';
 import { detectPlayerOvertake } from '../network/playerOvertake';
 import { medianRegistry, findMedianObstacleCollision, getMedianCollisionDamage, triggerPedestrianJump } from '../maps/medianCollision';
 import { SmokeParticles } from '../effects/Effects';
+import { ExplosionFire } from '../effects/ExplosionFire';
 import { PlayerNameLabel } from '../effects/PlayerNameLabel';
 import { triggerCollisionFeedback } from '../effects/collisionFeedback';
 import { useCameraController, useCameraSwitcher } from '../camera/CameraController';
@@ -61,6 +63,9 @@ function PlayerVehicle({
   const trafficHitTimes = useRef(new Map<string, number>());
   const playerHitTimes = useRef(new Map<string, number>());
   const medianHitTimes = useRef(new Map<string, number>());
+  const explodedRef = useRef(false);
+  const soloRespawnTimer = useRef(0);
+  const localPlayerId = useLobbyStore((s) => s.localPlayerId) || useAuthStore((s) => s.profile.id);
   const remotePlayerSides = useRef(new Map<string, 'behind' | 'ahead' | 'unknown'>());
   const raceStartZ = useRef(spawnPosition.z);
   const lastDistanceReport = useRef(-1);
@@ -98,8 +103,42 @@ function PlayerVehicle({
   useFrame((_, delta) => {
     if (useRaceStore.getState().isRaceFinished) return;
 
+    updatePlayerRams(delta);
+
     const health = useRaceStore.getState().health;
-    const state = physics.current.update(inputRef.current, delta, health);
+    const ramPos = getPlayerRamPosition(localPlayerId);
+    const isRamming = ramPos.active;
+
+    if (health <= 0) {
+      if (!explodedRef.current) {
+        explodedRef.current = true;
+        soloRespawnTimer.current = 0;
+        playCollisionImpact('heavy', maxSpeedRef.current);
+        physics.current.stopVehicle();
+      }
+      soloRespawnTimer.current += delta;
+      if (isSolo && soloRespawnTimer.current > 3) {
+        useRaceStore.getState().setHealth(50);
+        physics.current.setPosition(spawnPosition.x, spawnPosition.y, spawnPosition.z, spawnPosition.rotation);
+        explodedRef.current = false;
+        soloRespawnTimer.current = 0;
+      }
+      if (groupRef.current) {
+        groupRef.current.position.set(posRef.current.x, posRef.current.y, posRef.current.z);
+        groupRef.current.rotation.y = rotRef.current;
+      }
+      return;
+    }
+
+    explodedRef.current = false;
+
+    let state = physics.current.getState();
+    if (isRamming) {
+      physics.current.setPosition(ramPos.x, ramPos.y, ramPos.z, rotRef.current);
+      state = physics.current.getState();
+    } else {
+      state = physics.current.update(inputRef.current, delta, health);
+    }
     posRef.current = state.position;
     rotRef.current = state.rotation;
     velRef.current = state.velocity;
@@ -137,7 +176,7 @@ function PlayerVehicle({
       const finishTimeMs = Date.now() - startedAt;
       useRaceStore.getState().setDistanceRemaining(0);
       useRaceStore.getState().setRaceFinished(finishTimeMs);
-      playCelebration();
+      if (isSolo) playCelebration();
       if (!isSolo) getSocket().emit(SocketEvents.RACE_FINISH);
     }
 
@@ -179,7 +218,40 @@ function PlayerVehicle({
     }
 
     collisionCooldown.current = Math.max(0, collisionCooldown.current - delta);
-    if (collisionCooldown.current <= 0 && state.speed > 3) {
+    if (collisionCooldown.current <= 0 && state.speed > 3 && !isRamming) {
+      if (!isSolo) {
+        const remotePlayers = useRaceStore.getState().remotePlayers;
+        const hitPlayerId = findPlayerCollision(state.position.x, state.position.z, remotePlayers);
+        if (hitPlayerId) {
+          const now = Date.now();
+          const lastHit = playerHitTimes.current.get(hitPlayerId) ?? 0;
+          if (now - lastHit > 1200) {
+            playerHitTimes.current.set(hitPlayerId, now);
+            collisionCooldown.current = 0.5;
+            const remote = remotePlayers[hitPlayerId];
+            const { severity } = getCollisionDamage(state.speed);
+            const landing = computePlayerRamLanding(
+              remote.position,
+              state.position,
+              state.rotation,
+              state.speed,
+            );
+            const ramPayload = {
+              attackerId: localPlayerId,
+              targetId: hitPlayerId,
+              start: { x: remote.position.x, y: remote.position.y, z: remote.position.z },
+              end: landing,
+              speedKmh: state.speed,
+            };
+            triggerPlayerRam(hitPlayerId, ramPayload.start, ramPayload.end);
+            getSocket().emit(SocketEvents.PLAYER_RAM, ramPayload);
+            playCollisionImpact(severity, state.speed);
+            triggerCollisionFeedback(severity, state.speed * 0.6);
+            return;
+          }
+        }
+      }
+
       const hit = findTrafficCollision(
         state.position.x,
         state.position.z,
@@ -204,9 +276,10 @@ function PlayerVehicle({
 
           if (!isSolo) {
             getSocket().emit(SocketEvents.COLLISION, {
-              playerId: useAuthStore.getState().profile.id,
+              playerId: localPlayerId,
               severity,
               position: { ...state.position },
+              collisionType: 'traffic',
             });
           }
         }
@@ -222,44 +295,10 @@ function PlayerVehicle({
             playSound('brake');
             triggerCollisionFeedback('small', state.speed * 0.25);
           } else {
-            const { severity, damage } = getMedianCollisionDamage(medianHit.type, state.speed);
-            const newHealth = Math.max(0, health - damage);
-            useRaceStore.getState().setHealth(newHealth);
+            const { severity } = getMedianCollisionDamage(medianHit.type, state.speed);
             physics.current.applyTrafficCollision(severity, medianHit.position.x);
-            playCollisionImpact(severity, state.speed);
-            triggerCollisionFeedback(severity, state.speed);
-
-            if (!isSolo) {
-              getSocket().emit(SocketEvents.COLLISION, {
-                playerId: useAuthStore.getState().profile.id,
-                severity,
-                position: { ...state.position },
-              });
-            }
-          }
-        }
-      } else if (!isSolo) {
-        const remotePlayers = useRaceStore.getState().remotePlayers;
-        const hitPlayerId = findPlayerCollision(state.position.x, state.position.z, remotePlayers);
-        if (hitPlayerId) {
-          const now = Date.now();
-          const lastHit = playerHitTimes.current.get(hitPlayerId) ?? 0;
-          if (now - lastHit > 1200) {
-            playerHitTimes.current.set(hitPlayerId, now);
-            collisionCooldown.current = 0.5;
-            const { severity, damage } = getCollisionDamage(state.speed);
-            const newHealth = Math.max(0, health - damage);
-            useRaceStore.getState().setHealth(newHealth);
-            physics.current.applyTrafficCollision(severity, remotePlayers[hitPlayerId].position.x);
-            playCollisionImpact(severity, state.speed);
-            triggerCollisionFeedback(severity, state.speed);
-
-            getSocket().emit(SocketEvents.COLLISION, {
-              playerId: useAuthStore.getState().profile.id,
-              targetPlayerId: hitPlayerId,
-              severity,
-              position: { ...state.position },
-            });
+            playCollisionImpact(severity, state.speed * 0.5);
+            triggerCollisionFeedback(severity, state.speed * 0.5);
           }
         }
       }
@@ -285,7 +324,8 @@ function PlayerVehicle({
 
   return (
     <group ref={groupRef}>
-      <VehicleMesh key={vehicleId} config={config} color={vehicleColor} />
+      {health > 0 && <VehicleMesh key={vehicleId} config={config} color={vehicleColor} />}
+      <ExplosionFire active={health <= 0} />
       <SmokeParticles active={health < 50 && health > 0} position={[0, 0.5, -1]} />
       {!isSolo && <PlayerNameLabel name={username} isLocal />}
     </group>

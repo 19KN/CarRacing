@@ -4,7 +4,7 @@ import {
   HEALTH_DAMAGE, getMapById, COIN_REWARDS, XP_PER_RACE, XP_PER_WIN,
   LeaderboardEntry, RaceResult, getRaceSpawnPosition, computeRaceProgress,
 } from '@indian-racing/shared';
-import { Lobby, LobbyPlayer } from '@indian-racing/shared';
+import { PlayerFinishedPayload, Lobby, LobbyPlayer } from '@indian-racing/shared';
 import { store } from './memoryStore';
 import { config } from '../config';
 
@@ -79,26 +79,33 @@ export class RaceService {
     const race = store.getRace(gamingId);
     if (!race) return null;
 
+    if (payload.targetPlayerId) {
+      return race;
+    }
+
     const player = race.players.find((p) => p.playerId === payload.playerId);
-    if (!player) return null;
+    if (!player || player.isRespawning) return null;
 
     const damage = HEALTH_DAMAGE[payload.severity] || 4;
     player.health = Math.max(0, player.health - damage);
-
-    if (payload.targetPlayerId) {
-      const target = race.players.find((p) => p.playerId === payload.targetPlayerId);
-      if (target && !target.isRespawning) {
-        target.health = Math.max(0, target.health - damage);
-        if (target.health <= 0) {
-          this.startRespawn(gamingId, target.playerId);
-        }
-      }
-    }
 
     if (player.health <= 0) {
       this.startRespawn(gamingId, payload.playerId);
     }
 
+    store.setRace(gamingId, race);
+    return race;
+  }
+
+  handlePlayerRam(gamingId: string, payload: { targetId: string; end: { x: number; y: number; z: number } }): RaceState | null {
+    const race = store.getRace(gamingId);
+    if (!race) return null;
+
+    const target = race.players.find((p) => p.playerId === payload.targetId);
+    if (!target || target.isRespawning) return null;
+
+    target.position = { ...payload.end };
+    target.velocity = { x: 0, y: 0, z: 0 };
     store.setRace(gamingId, race);
     return race;
   }
@@ -128,7 +135,10 @@ export class RaceService {
     }, config.respawnDelay);
   }
 
-  handleCheckpoint(gamingId: string, playerId: string, checkpointIndex: number): RaceState | null {
+  handleCheckpoint(gamingId: string, playerId: string, checkpointIndex: number): {
+    race: RaceState;
+    finishPayload?: PlayerFinishedPayload;
+  } | null {
     const race = store.getRace(gamingId);
     if (!race) return null;
 
@@ -147,17 +157,16 @@ export class RaceService {
 
     const map = getMapById(race.mapId);
     if (map && checkpointIndex >= map.checkpoints.length - 1 && !player.finished) {
-      player.finished = true;
-      player.finishTime = Date.now() - (race.startedAt || Date.now());
-      this.updateRanks(race);
-
-      if (race.players.every((p) => p.finished || p.playerId.startsWith('player_') && p.username.startsWith('AI_'))) {
-        race.status = 'finished';
+      store.setRace(gamingId, race);
+      const finishResult = this.handlePlayerFinish(gamingId, playerId);
+      if (finishResult) {
+        return { race: finishResult.race, finishPayload: finishResult.payload };
       }
+      return { race };
     }
 
     store.setRace(gamingId, race);
-    return race;
+    return { race };
   }
 
   private updateRanks(race: RaceState): void {
@@ -190,29 +199,33 @@ export class RaceService {
     const race = store.getRace(gamingId);
     if (!race) return [];
 
-    return race.players.map((p) => {
-      const speed = Math.sqrt(p.velocity.x ** 2 + p.velocity.z ** 2) * 3.6;
-      let coins = COIN_REWARDS.base;
-      if (p.rank === 1) coins += COIN_REWARDS.first;
-      else if (p.rank === 2) coins += COIN_REWARDS.second;
-      else if (p.rank === 3) coins += COIN_REWARDS.third;
-      if (p.health > 80) coins += COIN_REWARDS.cleanBonus;
+    this.updateRanks(race);
 
-      let xp = XP_PER_RACE;
-      if (p.rank === 1) xp += XP_PER_WIN;
+    return race.players
+      .map((p) => {
+        const speed = Math.sqrt(p.velocity.x ** 2 + p.velocity.z ** 2) * 3.6;
+        let coins = COIN_REWARDS.base;
+        if (p.rank === 1) coins += COIN_REWARDS.first;
+        else if (p.rank === 2) coins += COIN_REWARDS.second;
+        else if (p.rank === 3) coins += COIN_REWARDS.third;
+        if (p.health > 80) coins += COIN_REWARDS.cleanBonus;
 
-      return {
-        playerId: p.playerId,
-        username: p.username,
-        rank: p.rank,
-        finishTime: p.finishTime || 0,
-        distance: p.distanceTraveled,
-        coinsEarned: coins,
-        xpEarned: xp,
-        maxSpeed: speed,
-        collisions: 100 - p.health,
-      };
-    });
+        let xp = XP_PER_RACE;
+        if (p.rank === 1) xp += XP_PER_WIN;
+
+        return {
+          playerId: p.playerId,
+          username: p.username,
+          rank: p.rank,
+          finishTime: p.finishTime || 0,
+          distance: p.distanceTraveled,
+          coinsEarned: coins,
+          xpEarned: xp,
+          maxSpeed: speed,
+          collisions: 100 - p.health,
+        };
+      })
+      .sort((a, b) => a.rank - b.rank);
   }
 
   submitToLeaderboard(result: RaceResult): void {
@@ -227,6 +240,51 @@ export class RaceService {
       submittedAt: Date.now(),
     };
     store.addLeaderboardEntry(entry);
+  }
+
+  handlePlayerFinish(gamingId: string, playerId: string): {
+    race: RaceState;
+    payload: PlayerFinishedPayload;
+  } | null {
+    const race = store.getRace(gamingId);
+    if (!race || race.status !== 'racing') return null;
+
+    const player = race.players.find((p) => p.playerId === playerId);
+    if (!player || player.finished) return null;
+
+    player.finished = true;
+    player.finishTime = Date.now() - (race.startedAt || Date.now());
+    this.updateRanks(race);
+
+    const standings = [...race.players]
+      .filter((p) => p.finished)
+      .sort((a, b) => (a.finishTime || 0) - (b.finishTime || 0))
+      .map((p, i) => ({
+        playerId: p.playerId,
+        username: p.username,
+        rank: i + 1,
+        finishTime: p.finishTime || 0,
+      }));
+
+    const finisher = standings.find((s) => s.playerId === playerId)!;
+
+    if (race.players.every((p) => p.finished)) {
+      race.status = 'finished';
+    }
+
+    store.setRace(gamingId, race);
+
+    return {
+      race,
+      payload: {
+        playerId: finisher.playerId,
+        username: finisher.username,
+        rank: finisher.rank,
+        finishTime: finisher.finishTime,
+        standings,
+        allFinished: race.status === 'finished',
+      },
+    };
   }
 
   getRace(gamingId: string): RaceState | undefined {

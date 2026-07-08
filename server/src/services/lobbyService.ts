@@ -185,6 +185,7 @@ export class LobbyService {
   canStartRace(gamingId: string): boolean {
     const lobby = store.getLobby(gamingId);
     if (!lobby || lobby.players.length < 2) return false;
+    // maxPlayers is a cap only — race starts when every joined player is ready
     return lobby.players.every((p) => p.isReady);
   }
 

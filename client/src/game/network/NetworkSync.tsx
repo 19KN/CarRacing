@@ -1,12 +1,13 @@
 import { useRef, useEffect } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-import { getVehicleById, DEFAULT_VEHICLE_ID } from '@indian-racing/shared';
+import { getVehicleById, DEFAULT_VEHICLE_ID, PlayerRamPayload } from '@indian-racing/shared';
 import { getSocket, SocketEvents } from '../../utils/socket';
 import { audioManager } from '../audio/AudioManager';
 import { useAuthStore, useRaceStore, useLobbyStore } from '../../stores';
 import { VehicleMesh } from '../vehicles/VehicleMesh';
 import { PlayerNameLabel } from '../effects/PlayerNameLabel';
+import { triggerPlayerRam, updatePlayerRams, getPlayerRamPosition } from './playerRam';
 
 export function useNetworkSync(
   localPosition: React.RefObject<{ x: number; y: number; z: number }>,
@@ -58,10 +59,16 @@ export function useNetworkSync(
     socket.on(SocketEvents.POSITION_RANK, onPositionRank);
     socket.on(SocketEvents.HEALTH_UPDATE, onHealthUpdate);
 
+    const onPlayerRam = (data: PlayerRamPayload) => {
+      triggerPlayerRam(data.targetId, data.start, data.end);
+    };
+    socket.on(SocketEvents.PLAYER_RAM, onPlayerRam);
+
     return () => {
       socket.off(SocketEvents.POSITION_SYNC, onPositionSync);
       socket.off(SocketEvents.POSITION_RANK, onPositionRank);
       socket.off(SocketEvents.HEALTH_UPDATE, onHealthUpdate);
+      socket.off(SocketEvents.PLAYER_RAM, onPlayerRam);
     };
   }, [playerId, enabled, updateRemote, setRankings, setHealth, setPosition]);
 
@@ -107,12 +114,21 @@ export function RemotePlayer({
 
   const remote = remotePlayers[playerId];
 
-  useFrame(() => {
+  useFrame((_, delta) => {
+    updatePlayerRams(delta);
     if (!groupRef.current) return;
     if (remote) {
       targetPos.current.set(remote.position.x, remote.position.y, remote.position.z);
       targetRot.current = remote.rotation;
     }
+
+    const ram = getPlayerRamPosition(playerId);
+    if (ram.active) {
+      groupRef.current.position.set(ram.x, ram.y, ram.z);
+      groupRef.current.rotation.y = targetRot.current;
+      return;
+    }
+
     groupRef.current.position.lerp(targetPos.current, 0.35);
     groupRef.current.rotation.y += (targetRot.current - groupRef.current.rotation.y) * 0.35;
   });
