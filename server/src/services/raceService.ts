@@ -9,6 +9,12 @@ import { store } from './memoryStore';
 import { config } from '../config';
 
 export class RaceService {
+  private respawnHandler?: (gamingId: string, playerId: string, race: RaceState) => void;
+
+  setRespawnHandler(handler: (gamingId: string, playerId: string, race: RaceState) => void): void {
+    this.respawnHandler = handler;
+  }
+
   createRace(lobby: Lobby): RaceState {
     const map = getMapById(lobby.settings.mapId);
     const weatherPool = map?.weatherPool || ['clear'];
@@ -110,6 +116,23 @@ export class RaceService {
     return race;
   }
 
+  private finishRespawn(gamingId: string, playerId: string): RaceState | null {
+    const race = store.getRace(gamingId);
+    if (!race) return null;
+    const player = race.players.find((p) => p.playerId === playerId);
+    if (!player) return null;
+
+    player.health = 50;
+    player.isRespawning = false;
+    const map = getMapById(race.mapId);
+    if (map && map.checkpoints[player.checkpointIndex]) {
+      player.position = { ...map.checkpoints[player.checkpointIndex], y: 0.5 };
+    }
+    player.velocity = { x: 0, y: 0, z: 0 };
+    store.setRace(gamingId, race);
+    return race;
+  }
+
   private startRespawn(gamingId: string, playerId: string): void {
     const race = store.getRace(gamingId);
     if (!race) return;
@@ -120,17 +143,9 @@ export class RaceService {
     store.setRace(gamingId, race);
 
     setTimeout(() => {
-      const r = store.getRace(gamingId);
-      if (!r) return;
-      const p = r.players.find((pl) => pl.playerId === playerId);
-      if (p) {
-        p.health = 50;
-        p.isRespawning = false;
-        const map = getMapById(r.mapId);
-        if (map && map.checkpoints[p.checkpointIndex]) {
-          p.position = { ...map.checkpoints[p.checkpointIndex], y: 0.5 };
-        }
-        store.setRace(gamingId, r);
+      const updated = this.finishRespawn(gamingId, playerId);
+      if (updated && this.respawnHandler) {
+        this.respawnHandler(gamingId, playerId, updated);
       }
     }, config.respawnDelay);
   }

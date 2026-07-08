@@ -27,6 +27,7 @@ export function RaceHUD() {
   const setShowFinishOverlay = useRaceStore((s) => s.setShowFinishOverlay);
   const maxRaceSpeed = useRaceStore((s) => s.maxRaceSpeed);
   const isPaused = useRaceStore((s) => s.isPaused);
+  const isRespawning = useRaceStore((s) => s.isRespawning);
   const setPaused = useRaceStore((s) => s.setPaused);
   const setResults = useRaceStore((s) => s.setResults);
   const setDistanceRemaining = useRaceStore((s) => s.setDistanceRemaining);
@@ -139,6 +140,11 @@ export function RaceHUD() {
         <div className="absolute bottom-24 left-4 w-48 hud-panel">
           <div className="text-xs text-gray-400 mb-1">HEALTH</div>
           <HealthBar health={health} />
+          {isRespawning && (
+            <div className="mt-2 text-xs font-semibold text-red-400 animate-pulse">
+              💥 Exploded — respawning...
+            </div>
+          )}
         </div>
 
         {/* Distance & time */}

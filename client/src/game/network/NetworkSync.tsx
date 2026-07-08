@@ -51,8 +51,31 @@ export function useNetworkSync(
       }
     };
 
-    const onHealthUpdate = (data: { playerId: string; health: number }) => {
-      if (data.playerId === playerId) setHealth(data.health);
+    const onHealthUpdate = (data: {
+      playerId: string;
+      health: number;
+      isRespawning?: boolean;
+      position?: { x: number; y: number; z: number };
+      rotation?: number;
+    }) => {
+      if (data.playerId !== playerId) return;
+      if (data.health <= 0) {
+        setHealth(0);
+        useRaceStore.getState().setRespawning(true);
+        return;
+      }
+      if (data.position && data.rotation !== undefined && !data.isRespawning) {
+        useRaceStore.getState().applyRespawn({
+          health: data.health,
+          position: data.position,
+          rotation: data.rotation,
+        });
+        return;
+      }
+      setHealth(data.health);
+      if (data.isRespawning !== undefined) {
+        useRaceStore.getState().setRespawning(data.isRespawning);
+      }
     };
 
     socket.on(SocketEvents.POSITION_SYNC, onPositionSync);

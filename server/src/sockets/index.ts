@@ -18,6 +18,27 @@ const countdownValues = new Map<string, number>();
 const raceTickIntervals = new Map<string, NodeJS.Timeout>();
 
 export function setupSocketHandlers(io: Server): void {
+  raceService.setRespawnHandler((gamingId, playerId, race) => {
+    const player = race.players.find((p) => p.playerId === playerId);
+    if (!player) return;
+    io.to(gamingId).emit(SocketEvents.HEALTH_UPDATE, {
+      playerId,
+      health: player.health,
+      isRespawning: false,
+      position: player.position,
+      rotation: player.rotation,
+    });
+    io.to(gamingId).emit(SocketEvents.POSITION_SYNC, {
+      players: race.players.map((p) => ({
+        playerId: p.playerId,
+        position: p.position,
+        rotation: p.rotation,
+        velocity: p.velocity,
+        rank: p.rank,
+      })),
+    });
+  });
+
   io.on('connection', (socket: Socket) => {
     console.log(`Client connected: ${socket.id}`);
 
@@ -166,6 +187,8 @@ export function setupSocketHandlers(io: Server): void {
             playerId: data.playerId,
             health: player.health,
             isRespawning: player.isRespawning,
+            position: player.position,
+            rotation: player.rotation,
           });
         }
       }

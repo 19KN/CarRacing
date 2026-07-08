@@ -186,6 +186,8 @@ interface RaceStateStore {
   countdown: number | null;
   isPaused: boolean;
   health: number;
+  isRespawning: boolean;
+  respawnRequest: { id: number; health: number; position: { x: number; y: number; z: number }; rotation: number } | null;
   position: number;
   speed: number;
   distanceRemaining: number;
@@ -203,6 +205,9 @@ interface RaceStateStore {
   setCountdown: (v: number | null) => void;
   setPaused: (p: boolean) => void;
   setHealth: (h: number) => void;
+  setRespawning: (v: boolean) => void;
+  applyRespawn: (payload: { health: number; position: { x: number; y: number; z: number }; rotation: number }) => void;
+  clearRespawnRequest: () => void;
   setPosition: (p: number) => void;
   setSpeed: (s: number) => void;
   setDistanceRemaining: (d: number) => void;
@@ -222,6 +227,8 @@ export const useRaceStore = create<RaceStateStore>((set, get) => ({
   countdown: null,
   isPaused: false,
   health: 100,
+  isRespawning: false,
+  respawnRequest: null,
   position: 1,
   speed: 0,
   distanceRemaining: 0,
@@ -261,6 +268,8 @@ export const useRaceStore = create<RaceStateStore>((set, get) => ({
     set({
       race,
       health: 100,
+      isRespawning: false,
+      respawnRequest: null,
       isRaceFinished: false,
       finishTimeMs: null,
       maxRaceSpeed: 0,
@@ -302,6 +311,27 @@ export const useRaceStore = create<RaceStateStore>((set, get) => ({
   setCountdown: (countdown) => set({ countdown }),
   setPaused: (isPaused) => set({ isPaused }),
   setHealth: (health) => set({ health }),
+  setRespawning: (isRespawning) => set({ isRespawning }),
+  applyRespawn: ({ health, position, rotation }) => {
+    const state = get();
+    const race = state.race;
+    const playerId = useLobbyStore.getState().localPlayerId || useAuthStore.getState().profile.id;
+    const players = race
+      ? race.players.map((p) => (
+        p.playerId === playerId
+          ? { ...p, position: { ...position }, rotation, health }
+          : p
+      ))
+      : [];
+    set({
+      health,
+      isRespawning: false,
+      speed: 0,
+      respawnRequest: { id: Date.now(), health, position, rotation },
+      race: race ? { ...race, players } : race,
+    });
+  },
+  clearRespawnRequest: () => set({ respawnRequest: null }),
   setPosition: (position) => set({ position }),
   setSpeed: (speed) => set({ speed }),
   setDistanceRemaining: (distanceRemaining) => set({ distanceRemaining }),
@@ -312,7 +342,7 @@ export const useRaceStore = create<RaceStateStore>((set, get) => ({
   reset: () => set({
     race: null, results: null, rankings: [], finishStandings: [], showFinishOverlay: false,
     countdown: null, isPaused: false,
-    health: 100, position: 1, speed: 0, distanceRemaining: 0,
+    health: 100, isRespawning: false, respawnRequest: null, position: 1, speed: 0, distanceRemaining: 0,
     isRaceFinished: false, finishTimeMs: null, maxRaceSpeed: 0,
     remotePlayers: {},
   }),

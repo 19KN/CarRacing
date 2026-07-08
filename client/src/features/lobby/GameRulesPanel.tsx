@@ -33,7 +33,7 @@ const RULE_SECTIONS = [
       'Hit AI traffic on the road — health decreases and your car gets knocked',
       'Hit trees, median dividers, and roadside obstacles — health decreases',
       'Below 50% health — engine smoke; low health also reduces top speed',
-      'At 0% health — explosion and respawn (solo practice respawns at 50% health)',
+      'At 0% health — big explosion, then respawn at your last checkpoint with 50% health (solo & multiplayer)',
       'Ram another player — no health loss; the hit car is launched to the sidewalk',
     ],
   },
