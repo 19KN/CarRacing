@@ -295,16 +295,6 @@ export function LobbyScreen() {
     navigate('/menu');
   };
 
-  if (countdown !== null) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-game-dark">
-        <div className="text-9xl font-display font-bold text-saffron animate-pulse">
-          {countdown === 0 ? 'GO!' : countdown}
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen overflow-y-auto bg-game-dark p-4 pb-10">
       <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-4">

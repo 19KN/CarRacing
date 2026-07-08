@@ -1,7 +1,8 @@
 import { useRef, useMemo, useLayoutEffect } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
-import { WeatherType, TimeOfDay } from '@indian-racing/shared';
+import { WeatherType, TimeOfDay, RACE_START_Z } from '@indian-racing/shared';
+import { playerPositionRegistry } from '../core/playerPositionRegistry';
 
 interface TimeLighting {
   sky: string;
@@ -11,7 +12,7 @@ interface TimeLighting {
   fillIntensity: number;
   fogNear: number;
   fogFar: number;
-  sunPosition: [number, number, number];
+  sunOffset: [number, number, number];
   showSun: boolean;
 }
 
@@ -24,7 +25,7 @@ const TIME_COLORS: Record<TimeOfDay, TimeLighting> = {
     fillIntensity: 0.35,
     fogNear: 120,
     fogFar: 900,
-    sunPosition: [110, 42, -140],
+    sunOffset: [55, 42, -120],
     showSun: true,
   },
   afternoon: {
@@ -35,7 +36,7 @@ const TIME_COLORS: Record<TimeOfDay, TimeLighting> = {
     fillIntensity: 0.25,
     fogNear: 140,
     fogFar: 1000,
-    sunPosition: [60, 120, -80],
+    sunOffset: [40, 95, -90],
     showSun: true,
   },
   evening: {
@@ -46,7 +47,7 @@ const TIME_COLORS: Record<TimeOfDay, TimeLighting> = {
     fillIntensity: 0.2,
     fogNear: 70,
     fogFar: 550,
-    sunPosition: [-130, 28, -120],
+    sunOffset: [-80, 28, -110],
     showSun: true,
   },
   night: {
@@ -57,7 +58,7 @@ const TIME_COLORS: Record<TimeOfDay, TimeLighting> = {
     fillIntensity: 0.08,
     fogNear: 40,
     fogFar: 320,
-    sunPosition: [80, 90, -60],
+    sunOffset: [50, 75, -80],
     showSun: true,
   },
   sunrise: {
@@ -68,7 +69,7 @@ const TIME_COLORS: Record<TimeOfDay, TimeLighting> = {
     fillIntensity: 0.28,
     fogNear: 60,
     fogFar: 500,
-    sunPosition: [150, 22, -160],
+    sunOffset: [90, 24, -130],
     showSun: true,
   },
   sunset: {
@@ -79,13 +80,14 @@ const TIME_COLORS: Record<TimeOfDay, TimeLighting> = {
     fillIntensity: 0.22,
     fogNear: 55,
     fogFar: 480,
-    sunPosition: [-150, 24, -150],
+    sunOffset: [-95, 26, -125],
     showSun: true,
   },
 };
 
-function VisibleSun({ position, color, isNight }: { position: [number, number, number]; color: string; isNight: boolean }) {
+function VisibleSun({ color, isNight }: { color: string; isNight: boolean }) {
   const glowRef = useRef<THREE.Mesh>(null);
+  const coreSize = isNight ? 5 : 7;
 
   useFrame(({ clock }) => {
     if (!glowRef.current) return;
@@ -93,10 +95,8 @@ function VisibleSun({ position, color, isNight }: { position: [number, number, n
     glowRef.current.scale.setScalar(14 * pulse);
   });
 
-  const coreSize = isNight ? 5 : 7;
-
   return (
-    <group position={position}>
+    <group>
       <mesh renderOrder={-2}>
         <sphereGeometry args={[coreSize, 24, 24]} />
         <meshBasicMaterial color={color} fog={false} toneMapped={false} />
@@ -123,16 +123,28 @@ export function WeatherSystem({ weather, timeOfDay }: { weather: WeatherType; ti
   const timeConfig = TIME_COLORS[timeOfDay] || TIME_COLORS.morning;
   const rainRef = useRef<THREE.Points>(null);
   const birdsRef = useRef<THREE.Group>(null);
-  const sunTarget = useMemo(() => new THREE.Vector3(0, 0, -200), []);
+  const sunGroupRef = useRef<THREE.Group>(null);
+  const sunLightRef = useRef<THREE.DirectionalLight>(null);
+  const fillLightRef = useRef<THREE.DirectionalLight>(null);
+  const sunTarget = useMemo(() => new THREE.Object3D(), []);
   const isNight = timeOfDay === 'night';
+
+  useLayoutEffect(() => {
+    scene.add(sunTarget);
+    return () => {
+      scene.remove(sunTarget);
+    };
+  }, [scene, sunTarget]);
 
   useLayoutEffect(() => {
     const fogNear = weather === 'fog' ? 30 : timeConfig.fogNear;
     const fogFar = weather === 'fog' ? 120 : timeConfig.fogFar;
     scene.background = new THREE.Color(timeConfig.sky);
     scene.fog = new THREE.Fog(timeConfig.sky, fogNear, fogFar);
+    playerPositionRegistry.active = true;
     return () => {
       scene.fog = null;
+      playerPositionRegistry.active = false;
     };
   }, [scene, timeConfig.sky, timeConfig.fogNear, timeConfig.fogFar, weather]);
 
@@ -150,6 +162,26 @@ export function WeatherSystem({ weather, timeOfDay }: { weather: WeatherType; ti
   }, [weather]);
 
   useFrame((state) => {
+    const px = playerPositionRegistry.active ? playerPositionRegistry.x : 0;
+    const pz = playerPositionRegistry.active ? playerPositionRegistry.z : RACE_START_Z;
+    const [ox, oy, oz] = timeConfig.sunOffset;
+    const sunX = px + ox;
+    const sunY = oy;
+    const sunZ = pz + oz;
+
+    if (sunGroupRef.current) {
+      sunGroupRef.current.position.set(sunX, sunY, sunZ);
+    }
+    if (sunLightRef.current) {
+      sunLightRef.current.position.set(sunX, sunY, sunZ);
+      sunTarget.position.set(px, 0.5, pz - 60);
+      sunLightRef.current.target = sunTarget;
+      sunLightRef.current.target.updateMatrixWorld();
+    }
+    if (fillLightRef.current) {
+      fillLightRef.current.position.set(px - ox * 0.35, oy * 0.55, pz - oz * 0.25);
+    }
+
     if (rainRef.current && (weather === 'rain' || weather === 'thunder')) {
       const positions = rainRef.current.geometry.attributes.position.array as Float32Array;
       for (let i = 0; i < positions.length; i += 3) {
@@ -163,12 +195,10 @@ export function WeatherSystem({ weather, timeOfDay }: { weather: WeatherType; ti
       birdsRef.current.children.forEach((bird, i) => {
         bird.position.x += Math.sin(state.clock.elapsedTime + i) * 0.02;
         bird.position.z -= 0.05;
-        if (bird.position.z < -200) bird.position.z = 50;
+        if (bird.position.z < pz - 220) bird.position.z = pz + 50;
       });
     }
   });
-
-  const [sx, sy, sz] = timeConfig.sunPosition;
 
   return (
     <group>
@@ -178,7 +208,7 @@ export function WeatherSystem({ weather, timeOfDay }: { weather: WeatherType; ti
         position={[0, 80, 0]}
       />
       <directionalLight
-        position={timeConfig.sunPosition}
+        ref={sunLightRef}
         intensity={timeConfig.sunIntensity}
         color={timeConfig.sun}
         castShadow
@@ -188,17 +218,17 @@ export function WeatherSystem({ weather, timeOfDay }: { weather: WeatherType; ti
         shadow-camera-right={90}
         shadow-camera-top={90}
         shadow-camera-bottom={-90}
-      >
-        <object3D position={sunTarget} attach="target" />
-      </directionalLight>
+      />
       <directionalLight
-        position={[-sx * 0.4, sy * 0.5, -sz * 0.3]}
+        ref={fillLightRef}
         intensity={timeConfig.fillIntensity}
         color={timeConfig.sky}
       />
 
       {timeConfig.showSun && (
-        <VisibleSun position={timeConfig.sunPosition} color={timeConfig.sun} isNight={isNight} />
+        <group ref={sunGroupRef}>
+          <VisibleSun color={timeConfig.sun} isNight={isNight} />
+        </group>
       )}
 
       {(weather === 'rain' || weather === 'thunder') && (

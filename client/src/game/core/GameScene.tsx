@@ -2,7 +2,7 @@ import { useRef, useState, useEffect, Suspense, memo } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { EffectComposer, Bloom, Vignette } from '@react-three/postprocessing';
 import * as THREE from 'three';
-import { getVehicleById, getMapById, DEFAULT_MAP_ID, DEFAULT_VEHICLE_ID, getMapRaceDistance, RACE_START_Z } from '@indian-racing/shared';
+import { getVehicleById, getMapById, DEFAULT_MAP_ID, DEFAULT_VEHICLE_ID, getMapRaceDistance, RACE_START_Z, getRaceSpawnPosition } from '@indian-racing/shared';
 import { getFinishLineZ } from '../../utils/soloRace';
 import { VehicleMesh } from '../vehicles/VehicleMesh';
 import { MapEnvironment } from '../maps/MapEnvironment';
@@ -26,6 +26,7 @@ import { useNetworkSync, RemotePlayer } from '../network/NetworkSync';
 import { useAuthStore, useRaceStore, useLobbyStore, useSettingsStore } from '../../stores';
 import { getSocket, SocketEvents } from '../../utils/socket';
 import { CameraMode } from '@indian-racing/shared';
+import { playerPositionRegistry } from './playerPositionRegistry';
 
 const SOLO_RESPAWN_DELAY = 3;
 const MULTIPLAYER_RESPAWN_DELAY = 5.2;
@@ -163,6 +164,19 @@ function PlayerVehicle({
   useFrame((_, delta) => {
     if (useRaceStore.getState().isRaceFinished) return;
 
+    const countdown = useRaceStore.getState().countdown;
+    if (!isSolo && countdown !== null) {
+      playerPositionRegistry.x = posRef.current.x;
+      playerPositionRegistry.y = posRef.current.y;
+      playerPositionRegistry.z = posRef.current.z;
+      playerPositionRegistry.active = true;
+      if (groupRef.current) {
+        groupRef.current.position.set(posRef.current.x, posRef.current.y, posRef.current.z);
+        groupRef.current.rotation.y = rotRef.current;
+      }
+      return;
+    }
+
     updatePlayerRams(delta);
 
     const health = useRaceStore.getState().health;
@@ -204,6 +218,11 @@ function PlayerVehicle({
       groupRef.current.position.set(state.position.x, state.position.y, state.position.z);
       groupRef.current.rotation.y = state.rotation;
     }
+
+    playerPositionRegistry.x = state.position.x;
+    playerPositionRegistry.y = state.position.y;
+    playerPositionRegistry.z = state.position.z;
+    playerPositionRegistry.active = true;
 
     speedReportTimer.current += delta;
     const roundedSpeed = Math.round(state.speed);
@@ -406,28 +425,35 @@ function GameWorld({
   vehicleId,
   vehicleColor,
   mapId,
-  isSolo,
 }: {
   vehicleId: string;
   vehicleColor: string;
   mapId: string;
-  isSolo: boolean;
 }) {
   const map = getMapById(mapId) || getMapById(DEFAULT_MAP_ID)!;
   const weather = useRaceStore((s) => s.weather) as 'clear' | 'rain' | 'fog' | 'thunder' | 'wind';
   const timeOfDay = useRaceStore((s) => s.timeOfDay) as 'morning' | 'afternoon' | 'evening' | 'night' | 'sunrise' | 'sunset';
   const race = useRaceStore((s) => s.race);
+  const lobby = useLobbyStore((s) => s.lobby);
   const playerId = useAuthStore((s) => s.profile.id);
   const localPlayerId = useLobbyStore((s) => s.localPlayerId);
   const username = useAuthStore((s) => s.profile.username);
   const [signalState, setSignalState] = useState<'red' | 'yellow' | 'green'>('green');
-  const isMultiplayer = (race?.players.length ?? 0) >= 2;
   const resolvedPlayerId = localPlayerId || playerId;
   const myRacePlayer = race?.players.find((p) => p.playerId === resolvedPlayerId);
+  const lobbyPlayers = lobby?.players ?? [];
+  const playerCount = race?.players.length ?? lobbyPlayers.length ?? 1;
+  const myIndex = race
+    ? Math.max(0, race.players.findIndex((p) => p.playerId === resolvedPlayerId))
+    : Math.max(0, lobbyPlayers.findIndex((p) => p.id === resolvedPlayerId));
   const spawnPosition = myRacePlayer
     ? { x: myRacePlayer.position.x, y: myRacePlayer.position.y, z: myRacePlayer.position.z, rotation: myRacePlayer.rotation }
-    : { x: PLAYER_LANE_X, y: 0.5, z: RACE_START_Z, rotation: Math.PI };
+    : (() => {
+      const spawn = getRaceSpawnPosition(myIndex, Math.max(2, playerCount));
+      return { x: spawn.x, y: spawn.y, z: spawn.z, rotation: spawn.rotation };
+    })();
   const otherPlayers = race?.players.filter((p) => p.playerId !== resolvedPlayerId) ?? [];
+  const isMultiplayer = playerCount >= 2;
 
   useEffect(() => {
     const socket = getSocket();
@@ -446,11 +472,11 @@ function GameWorld({
         vehicleId={vehicleId}
         vehicleColor={vehicleColor}
         mapId={mapId}
-        isSolo={isSolo}
+        isSolo={!isMultiplayer}
         spawnPosition={spawnPosition}
         username={myRacePlayer?.username || username}
       />
-      {!isSolo && isMultiplayer && otherPlayers.map((p) => (
+      {isMultiplayer && otherPlayers.map((p) => (
         <RemotePlayer
           key={p.playerId}
           playerId={p.playerId}
@@ -500,7 +526,6 @@ export const GameScene = memo(function GameScene({
           vehicleId={vehicleId}
           vehicleColor={vehicleColor}
           mapId={mapId}
-          isSolo={isSolo}
         />
         {settings.bloom && (
           <EffectComposer multisampling={0}>

@@ -41,6 +41,10 @@ export function SocketSync() {
       },
       onCountdown: (value) => {
         setCountdown(value);
+        const lobby = useLobbyStore.getState().lobby;
+        if (lobby && lobby.players.length >= 2) {
+          navigate('/race');
+        }
       },
       onRaceStart: (race) => {
         const lobby = useLobbyStore.getState().lobby;
@@ -51,8 +55,10 @@ export function SocketSync() {
           useLobbyStore.getState().updateMySelection(me.vehicleId, me.vehicleColor);
         }
         setRace(mergedRace);
-        setCountdown(null);
+        setWeather(mergedRace.weather, mergedRace.timeOfDay);
+        setCountdown(0);
         navigate('/race');
+        window.setTimeout(() => setCountdown(null), 1000);
       },
       onWeatherSync: (weather, timeOfDay) => {
         setWeather(weather, timeOfDay);

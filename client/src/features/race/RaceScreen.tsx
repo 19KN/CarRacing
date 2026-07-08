@@ -12,6 +12,7 @@ import { getSocket, SocketEvents } from '../../utils/socket';
 import { formatDistance, formatTime } from '../../utils/progression';
 import { buildSoloRaceResult } from '../../utils/soloRace';
 import { TouchControls } from './TouchControls';
+import { RaceCountdownOverlay } from './RaceCountdownOverlay';
 import { useAudioManager } from '../../game/audio/AudioManager';
 export function RaceHUD() {
   const health = useRaceStore((s) => s.health);
@@ -36,6 +37,7 @@ export function RaceHUD() {
   const selectedVehicleId = useLobbyStore((s) => s.selectedVehicleId);
   const selectedVehicleColor = useLobbyStore((s) => s.selectedVehicleColor);
   const race = useRaceStore((s) => s.race);
+  const countdown = useRaceStore((s) => s.countdown);
   const profile = useAuthStore((s) => s.profile);
   const navigate = useNavigate();
 
@@ -46,7 +48,8 @@ export function RaceHUD() {
   const myLobbyPlayer = lobby?.players.find((p) => p.id === playerId);
   const vehicleId = myRacePlayer?.vehicleId || myLobbyPlayer?.vehicleId || selectedVehicleId || profile.favoriteVehicle;
   const vehicleColor = myRacePlayer?.vehicleColor || myLobbyPlayer?.vehicleColor || selectedVehicleColor || '#FF9933';
-  const isSolo = !race || race.players.length < 2;
+  const isMultiplayer = (race?.players.length ?? lobby?.players.length ?? 1) >= 2;
+  const isSolo = !isMultiplayer;
   const [elapsedMs, setElapsedMs] = useState(0);
   const { playCelebration } = useAudioManager();
 
@@ -67,12 +70,16 @@ export function RaceHUD() {
   }, [map]);
 
   useEffect(() => {
+    if (countdown !== null) {
+      setElapsedMs(0);
+      return;
+    }
     const startedAt = race?.startedAt ?? Date.now();
     const tick = () => setElapsedMs(Date.now() - startedAt);
     tick();
     const id = window.setInterval(tick, 200);
     return () => window.clearInterval(id);
-  }, [race?.startedAt]);
+  }, [race?.startedAt, countdown]);
 
   useEffect(() => {
     const socket = getSocket();
@@ -116,6 +123,10 @@ export function RaceHUD() {
           isSolo={isSolo}
         />
       </Suspense>
+
+      {countdown !== null && isMultiplayer && (
+        <RaceCountdownOverlay value={countdown} />
+      )}
 
       {/* HUD Overlay */}
       <div className="absolute inset-0 pointer-events-none">
