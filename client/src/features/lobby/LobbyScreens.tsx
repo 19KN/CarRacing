@@ -7,7 +7,7 @@ import { connectSocket, joinLobbySocket, leaveLobbySocket, getSocket, SocketEven
 import { VEHICLES, VEHICLE_COLORS, MAPS, MaxPlayers, DEFAULT_MAP_ID, DEFAULT_TRAFFIC_LEVEL, TrafficLevel, TRAFFIC_LEVEL_LABELS, GHAT_COMBAT_START_RULES, AERIAL_COMBAT_START_RULES } from '@indian-racing/shared';
 import { TrafficLevelPicker } from '../../components/ui/TrafficLevelPicker';
 import { copyToClipboard } from '../../utils/progression';
-import { useAudioManager } from '../../game/audio/AudioManager';
+import { useAudioManager, consumeLobbyMusicNewVisit } from '../../game/audio/AudioManager';
 import { GameRulesPanel } from './GameRulesPanel';
 
 const VehiclePreview = lazy(() => import('../garage/VehiclePreview').then((m) => ({ default: m.VehiclePreview })));
@@ -29,7 +29,7 @@ export function CreateLobby() {
   const { playLobbyMusic, stopLobbyMusic } = useAudioManager();
 
   useEffect(() => {
-    playLobbyMusic(true);
+    playLobbyMusic(consumeLobbyMusicNewVisit());
     return () => stopLobbyMusic(false);
   }, [playLobbyMusic, stopLobbyMusic]);
 
@@ -135,7 +135,7 @@ export function CreateLobby() {
           </>
         )}
 
-        <Button variant="secondary" onClick={() => navigate('/menu')} className="w-full mt-3">Cancel</Button>
+        <Button variant="secondary" onClick={() => { stopLobbyMusic(true); navigate('/menu'); }} className="w-full mt-3">Cancel</Button>
         <GameRulesPanel compact />
       </Card>
     </div>
@@ -165,7 +165,7 @@ export function JoinLobby() {
   const { playLobbyMusic, stopLobbyMusic } = useAudioManager();
 
   useEffect(() => {
-    playLobbyMusic(true);
+    playLobbyMusic(consumeLobbyMusicNewVisit());
     return () => stopLobbyMusic(false);
   }, [playLobbyMusic, stopLobbyMusic]);
 
@@ -209,7 +209,7 @@ export function JoinLobby() {
           <Button onClick={handleJoin} disabled={loading} className="w-full">
             {loading ? 'Joining...' : 'Join Lobby'}
           </Button>
-          <Button variant="secondary" onClick={() => navigate('/menu')} className="w-full">Back</Button>
+          <Button variant="secondary" onClick={() => { stopLobbyMusic(true); navigate('/menu'); }} className="w-full">Back</Button>
         </div>
         <GameRulesPanel compact />
       </Card>

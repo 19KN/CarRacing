@@ -5,6 +5,7 @@ import { useRaceStore, useLobbyStore } from '../../stores';
 import { useAuthStore } from '../../stores';
 import { applyRaceRewards, checkAchievements, formatTime } from '../../utils/progression';
 import { apiFetch } from '../../utils/api';
+import { markLobbyMusicNewVisit } from '../../game/audio/AudioManager';
 
 export function ResultsScreen() {
   const results = useRaceStore((s) => s.results);
@@ -93,7 +94,7 @@ export function ResultsScreen() {
         )}
 
         <div className="space-y-3">
-          <Button onClick={() => { resetRace(); resetLobby(); navigate('/lobby/create'); }} className="w-full">
+          <Button onClick={() => { resetRace(); resetLobby(); markLobbyMusicNewVisit(); navigate('/lobby/create'); }} className="w-full">
             Race Again
           </Button>
           <Button variant="secondary" onClick={() => { resetRace(); resetLobby(); navigate('/menu'); }} className="w-full">

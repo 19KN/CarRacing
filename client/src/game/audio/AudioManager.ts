@@ -20,6 +20,7 @@ const LOBBY_MUSIC_URLS = [
   '/assets/audio/lobby-music-2.mp3',
 ] as const;
 const LOBBY_MUSIC_TRACK_KEY = 'lobbyMusicNextTrack';
+export const LOBBY_MUSIC_NEW_VISIT_KEY = 'lobbyMusicNewVisit';
 const OVERTAKE_AUDIO_URL = '/assets/audio/overtake.mp3';
 const CELEBRATION_AUDIO_URL = '/assets/audio/celebration.mp3';
 const EXPLOSION_AUDIO_URL = '/assets/audio/explosion.mp3';
@@ -231,7 +232,9 @@ class AudioManager {
     if (this.lobbyMusicPlaying) return;
 
     if (options?.advance) {
-      this.lobbySessionTrack = this.getAndAdvanceLobbyTrackIndex();
+      if (this.lobbySessionTrack === null) {
+        this.lobbySessionTrack = this.getAndAdvanceLobbyTrackIndex();
+      }
     } else if (this.lobbySessionTrack === null) {
       this.lobbySessionTrack = this.getAndAdvanceLobbyTrackIndex();
     }
@@ -795,6 +798,27 @@ class AudioManager {
 }
 
 const audioManager = new AudioManager();
+
+export function markLobbyMusicNewVisit() {
+  try {
+    sessionStorage.setItem(LOBBY_MUSIC_NEW_VISIT_KEY, '1');
+  } catch {
+    // sessionStorage unavailable
+  }
+  audioManager.stopLobbyMusic(true);
+}
+
+export function consumeLobbyMusicNewVisit(): boolean {
+  try {
+    if (sessionStorage.getItem(LOBBY_MUSIC_NEW_VISIT_KEY) === '1') {
+      sessionStorage.removeItem(LOBBY_MUSIC_NEW_VISIT_KEY);
+      return true;
+    }
+  } catch {
+    // sessionStorage unavailable
+  }
+  return false;
+}
 
 export function useAudioManager() {
   const settings = useSettingsStore((s) => s.settings.audio);

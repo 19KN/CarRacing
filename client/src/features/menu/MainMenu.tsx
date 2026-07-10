@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { Button } from '../../components/ui';
 import { useAuthStore } from '../../stores';
+import { markLobbyMusicNewVisit } from '../../game/audio/AudioManager';
 
 export function MainMenu() {
   const navigate = useNavigate();
@@ -45,7 +46,12 @@ export function MainMenu() {
           <Button
             key={item.path}
             variant={item.primary ? 'primary' : 'secondary'}
-            onClick={() => navigate(item.path)}
+            onClick={() => {
+              if (item.path === '/lobby/create' || item.path === '/lobby/join') {
+                markLobbyMusicNewVisit();
+              }
+              navigate(item.path);
+            }}
             className="flex items-center gap-3 justify-center"
           >
             <span className="text-xl">{item.icon}</span>
