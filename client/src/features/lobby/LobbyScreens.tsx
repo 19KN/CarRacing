@@ -29,8 +29,8 @@ export function CreateLobby() {
   const { playLobbyMusic, stopLobbyMusic } = useAudioManager();
 
   useEffect(() => {
-    playLobbyMusic();
-    return () => stopLobbyMusic();
+    playLobbyMusic(true);
+    return () => stopLobbyMusic(false);
   }, [playLobbyMusic, stopLobbyMusic]);
 
   const selectedMap = MAPS.find((m) => m.id === mapId);
@@ -165,8 +165,8 @@ export function JoinLobby() {
   const { playLobbyMusic, stopLobbyMusic } = useAudioManager();
 
   useEffect(() => {
-    playLobbyMusic();
-    return () => stopLobbyMusic();
+    playLobbyMusic(true);
+    return () => stopLobbyMusic(false);
   }, [playLobbyMusic, stopLobbyMusic]);
 
   const handleJoin = async () => {

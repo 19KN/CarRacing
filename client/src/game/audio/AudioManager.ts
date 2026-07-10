@@ -15,7 +15,11 @@ interface EngineSynth {
 }
 
 const HORN_AUDIO_URL = '/assets/audio/horn.mp3';
-const LOBBY_MUSIC_URL = '/assets/audio/lobby-music.mp3';
+const LOBBY_MUSIC_URLS = [
+  '/assets/audio/lobby-music-1.mp3',
+  '/assets/audio/lobby-music-2.mp3',
+] as const;
+const LOBBY_MUSIC_TRACK_KEY = 'lobbyMusicNextTrack';
 const OVERTAKE_AUDIO_URL = '/assets/audio/overtake.mp3';
 const CELEBRATION_AUDIO_URL = '/assets/audio/celebration.mp3';
 const EXPLOSION_AUDIO_URL = '/assets/audio/explosion.mp3';
@@ -27,11 +31,12 @@ class AudioManager {
   private hornBuffer: AudioBuffer | null = null;
   private hornLoadPromise: Promise<void> | null = null;
   private activeHornSource: AudioBufferSourceNode | null = null;
-  private lobbyMusicBuffer: AudioBuffer | null = null;
-  private lobbyMusicLoadPromise: Promise<void> | null = null;
+  private lobbyMusicBuffers: Array<AudioBuffer | null> = [null, null];
+  private lobbyMusicLoadPromises: Array<Promise<void> | null> = [null, null];
   private lobbyMusicSource: AudioBufferSourceNode | null = null;
   private lobbyMusicGain: GainNode | null = null;
   private lobbyMusicPlaying = false;
+  private lobbySessionTrack: number | null = null;
   private overtakeBuffer: AudioBuffer | null = null;
   private overtakeLoadPromise: Promise<void> | null = null;
   private activeOvertakeSource: AudioBufferSourceNode | null = null;
@@ -53,7 +58,8 @@ class AudioManager {
     this.masterGain.connect(this.ctx.destination);
     this.masterGain.gain.value = this.volumes.master;
     void this.loadHornBuffer();
-    void this.loadLobbyMusicBuffer();
+    void this.loadLobbyMusicBuffer(0);
+    void this.loadLobbyMusicBuffer(1);
     void this.loadOvertakeBuffer();
     void this.loadCelebrationBuffer();
     void this.loadExplosionBuffer();
@@ -161,38 +167,51 @@ class AudioManager {
     this.activeOvertakeSource = source;
   }
 
-  private async loadLobbyMusicBuffer() {
-    if (!this.ctx || this.lobbyMusicBuffer || this.lobbyMusicLoadPromise) {
-      return this.lobbyMusicLoadPromise ?? undefined;
+  private getAndAdvanceLobbyTrackIndex(): number {
+    try {
+      const stored = localStorage.getItem(LOBBY_MUSIC_TRACK_KEY);
+      const index = stored === '1' ? 1 : 0;
+      localStorage.setItem(LOBBY_MUSIC_TRACK_KEY, index === 0 ? '1' : '0');
+      return index;
+    } catch {
+      return 0;
+    }
+  }
+
+  private async loadLobbyMusicBuffer(trackIndex: number) {
+    if (!this.ctx || trackIndex < 0 || trackIndex >= LOBBY_MUSIC_URLS.length) return;
+    if (this.lobbyMusicBuffers[trackIndex] || this.lobbyMusicLoadPromises[trackIndex]) {
+      return this.lobbyMusicLoadPromises[trackIndex] ?? undefined;
     }
 
-    this.lobbyMusicLoadPromise = (async () => {
+    this.lobbyMusicLoadPromises[trackIndex] = (async () => {
       try {
-        const response = await fetch(LOBBY_MUSIC_URL);
+        const response = await fetch(LOBBY_MUSIC_URLS[trackIndex]);
         if (!response.ok) return;
         const data = await response.arrayBuffer();
         if (!this.ctx) return;
-        this.lobbyMusicBuffer = await this.ctx.decodeAudioData(data);
+        this.lobbyMusicBuffers[trackIndex] = await this.ctx.decodeAudioData(data);
       } catch {
         // Lobby music is optional
       }
     })();
 
-    return this.lobbyMusicLoadPromise;
+    return this.lobbyMusicLoadPromises[trackIndex];
   }
 
   private getLobbyMusicVolume() {
     return 0.55 * this.volumes.ambient * this.volumes.master;
   }
 
-  private startLobbyMusicPlayback() {
-    if (!this.ctx || !this.masterGain || !this.lobbyMusicBuffer || this.lobbyMusicPlaying) return;
+  private startLobbyMusicPlayback(trackIndex: number) {
+    const buffer = this.lobbyMusicBuffers[trackIndex];
+    if (!this.ctx || !this.masterGain || !buffer || this.lobbyMusicPlaying) return;
 
-    this.stopLobbyMusic();
+    this.stopLobbyMusic(false);
 
     const source = this.ctx.createBufferSource();
     const gain = this.ctx.createGain();
-    source.buffer = this.lobbyMusicBuffer;
+    source.buffer = buffer;
     source.loop = true;
     gain.gain.value = this.getLobbyMusicVolume();
     source.connect(gain);
@@ -201,28 +220,37 @@ class AudioManager {
     this.lobbyMusicSource = source;
     this.lobbyMusicGain = gain;
     this.lobbyMusicPlaying = true;
+    this.lobbySessionTrack = trackIndex;
   }
 
-  playLobbyMusic() {
+  playLobbyMusic(options?: { advance?: boolean }) {
     if (!this.ctx) this.init();
     if (!this.ctx || !this.masterGain) return;
     this.resumeContext();
 
     if (this.lobbyMusicPlaying) return;
 
-    if (!this.lobbyMusicBuffer) {
-      void this.loadLobbyMusicBuffer().then(() => {
-        if (this.lobbyMusicBuffer && !this.lobbyMusicPlaying) {
-          this.startLobbyMusicPlayback();
+    if (options?.advance) {
+      this.lobbySessionTrack = this.getAndAdvanceLobbyTrackIndex();
+    } else if (this.lobbySessionTrack === null) {
+      this.lobbySessionTrack = this.getAndAdvanceLobbyTrackIndex();
+    }
+
+    const trackIndex = this.lobbySessionTrack ?? 0;
+
+    if (!this.lobbyMusicBuffers[trackIndex]) {
+      void this.loadLobbyMusicBuffer(trackIndex).then(() => {
+        if (this.lobbyMusicBuffers[trackIndex] && !this.lobbyMusicPlaying) {
+          this.startLobbyMusicPlayback(trackIndex);
         }
       });
       return;
     }
 
-    this.startLobbyMusicPlayback();
+    this.startLobbyMusicPlayback(trackIndex);
   }
 
-  stopLobbyMusic() {
+  stopLobbyMusic(clearSession = true) {
     if (this.lobbyMusicSource) {
       try {
         this.lobbyMusicSource.stop();
@@ -237,6 +265,9 @@ class AudioManager {
       this.lobbyMusicGain = null;
     }
     this.lobbyMusicPlaying = false;
+    if (clearSession) {
+      this.lobbySessionTrack = null;
+    }
   }
 
   private async loadHornBuffer() {
@@ -822,12 +853,12 @@ export function useAudioManager() {
     audioManager.stopEngine();
   }, []);
 
-  const playLobbyMusic = useCallback(() => {
-    audioManager.playLobbyMusic();
+  const playLobbyMusic = useCallback((advance?: boolean) => {
+    audioManager.playLobbyMusic({ advance });
   }, []);
 
-  const stopLobbyMusic = useCallback(() => {
-    audioManager.stopLobbyMusic();
+  const stopLobbyMusic = useCallback((clearSession?: boolean) => {
+    audioManager.stopLobbyMusic(clearSession ?? true);
   }, []);
 
   const playOvertakeSound = useCallback(() => {
