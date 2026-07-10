@@ -65,6 +65,26 @@ export const GLB_VEHICLE_CONFIGS: Record<string, GLBVehicleConfig> = {
     isGlass: (name) => /glass|window/i.test(name),
     paintMesh: (name) => !/wheel|tire|tyre|glass|window|light|lamp|interior|seat|chrome/i.test(name),
   },
+  helicopter: {
+    path: '/assets/vehicles/helicopter.glb',
+    targetSize: 8,
+    modelRotation: [0, Math.PI, 0],
+    paintMesh: (name) =>
+      name !== 'Box04_Box014'
+      && name !== 'Box20183'
+      && name !== 'Cylinder007'
+      && name !== 'Cylinder006',
+  },
+  airplane: {
+    path: '/assets/vehicles/airplane.glb',
+    targetSize: 10,
+    paintMesh: (name) => !/propeller|prop|blade|rotor|glass|window|wheel|tire|interior/i.test(name),
+  },
+  fighter_jet: {
+    path: '/assets/vehicles/airplane.glb',
+    targetSize: 11,
+    paintMesh: (name) => !/propeller|prop|blade|rotor|glass|window|wheel|tire|interior/i.test(name),
+  },
 };
 
 export const GLB_VEHICLE_IDS = new Set(Object.keys(GLB_VEHICLE_CONFIGS));

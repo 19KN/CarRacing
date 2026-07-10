@@ -16,7 +16,7 @@ const defaultProfile: PlayerProfile = {
   coins: 500,
   xp: 0,
   level: 1,
-  unlockedVehicles: ['bicycle', 'scooter', 'hatchback', 'cruise_ship', 'f1_car', 'dodge_challenger', 'bursley_defiance'],
+  unlockedVehicles: ['bicycle', 'scooter', 'hatchback', 'cruise_ship', 'f1_car', 'dodge_challenger', 'bursley_defiance', 'helicopter', 'airplane', 'fighter_jet'],
   unlockedColors: ['#FF9933', '#FFFFFF', '#138808'],
   unlockedHorns: ['default'],
   unlockedSkins: ['default'],
@@ -118,7 +118,9 @@ function resolveLocalPlayerId(lobby: Lobby | null): string {
   return byName?.id ?? auth.id;
 }
 
-export const useLobbyStore = create<LobbyState>((set, get) => ({
+export const useLobbyStore = create<LobbyState>()(
+  persist(
+    (set, get) => ({
   lobby: null,
   gamingId: '',
   chat: [],
@@ -181,12 +183,19 @@ export const useLobbyStore = create<LobbyState>((set, get) => ({
     chat: [],
     isHost: false,
     localPlayerId: '',
-    selectedVehicleId: DEFAULT_VEHICLE_ID,
-    selectedVehicleColor: '#FF9933',
-    selectedMapId: DEFAULT_MAP_ID,
-    selectedTrafficLevel: DEFAULT_TRAFFIC_LEVEL,
   }),
-}));
+    }),
+    {
+      name: 'indian-racing-lobby-prefs',
+      partialize: (state) => ({
+        selectedVehicleId: state.selectedVehicleId,
+        selectedVehicleColor: state.selectedVehicleColor,
+        selectedMapId: state.selectedMapId,
+        selectedTrafficLevel: state.selectedTrafficLevel,
+      }),
+    },
+  ),
+);
 
 interface RaceStateStore {
   race: RaceState | null;

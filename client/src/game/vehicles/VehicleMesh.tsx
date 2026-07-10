@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { VehicleConfig } from '@indian-racing/shared';
 import { GLBVehicleMesh } from './GLBVehicleMesh';
 import { GLB_VEHICLE_IDS } from './glbVehicleConfigs';
+import { AircraftMesh } from './AircraftMesh';
 
 interface VehicleMeshProps {
   config: VehicleConfig;
@@ -369,7 +370,24 @@ function getCarScale(config: VehicleConfig): number {
   }
 }
 
-export function VehicleMesh({ config, color }: VehicleMeshProps) {
+export function VehicleMesh({ config, color, rotorSpeed, pitch, onGround, visualRef }: VehicleMeshProps & {
+  rotorSpeed?: number;
+  pitch?: number;
+  onGround?: boolean;
+  visualRef?: React.MutableRefObject<{ rotorSpeed: number; pitch: number; onGround: boolean }>;
+}) {
+  if (config.category === 'aircraft') {
+    return (
+      <AircraftMesh
+        vehicleId={config.id}
+        color={color}
+        rotorSpeed={rotorSpeed}
+        pitch={pitch}
+        onGround={onGround}
+        visualRef={visualRef}
+      />
+    );
+  }
   if (GLB_VEHICLE_IDS.has(config.id)) {
     return <GLBVehicleMesh vehicleId={config.id} color={color} />;
   }

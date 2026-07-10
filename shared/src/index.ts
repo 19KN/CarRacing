@@ -5,3 +5,7 @@ export * from './maps';
 export * from './spawnPositions';
 export * from './raceProgress';
 export * from './traffic';
+export * from './ghatPath';
+export * from './ghatSpline';
+export * from './ghatSpawn';
+export * from './aerial';

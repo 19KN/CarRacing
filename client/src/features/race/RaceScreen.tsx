@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { HealthBar, Speedometer } from '../../components/ui';
 import { FinishCelebration } from '../../components/ui/FinishCelebration';
 import { useAuthStore, useLobbyStore, useRaceStore } from '../../stores';
@@ -7,12 +7,12 @@ import { lazy, Suspense } from 'react';
 import { LoadingSpinner } from '../../components/ui';
 
 const GameScene = lazy(() => import('../../game/core/GameScene').then((m) => ({ default: m.GameScene })));
-import { getMapById, DEFAULT_MAP_ID, getMapRaceDistance, getRaceSpawnPosition, PlayerFinishedPayload, DEFAULT_TRAFFIC_LEVEL } from '@indian-racing/shared';
+import { getMapById, DEFAULT_MAP_ID, getMapRaceDistance, getRaceSpawnPosition, getAerialSpawnPosition, getGhatSpawnPosition, getVehicleById, PlayerFinishedPayload, DEFAULT_TRAFFIC_LEVEL, isTrafficLevel, GHAT_COMBAT_MAX_SPEED_KMH, GHAT_COMBAT_START_RULES } from '@indian-racing/shared';
 import { getSocket, SocketEvents } from '../../utils/socket';
 import { formatDistance, formatTime } from '../../utils/progression';
 import { buildSoloRaceResult } from '../../utils/soloRace';
 import { TouchControls } from './TouchControls';
-import { RaceCountdownOverlay } from './RaceCountdownOverlay';
+import { RaceCountdownOverlay, StartLineInfoOverlay } from './RaceCountdownOverlay';
 import { useAudioManager } from '../../game/audio/AudioManager';
 export function RaceHUD() {
   const health = useRaceStore((s) => s.health);
@@ -36,13 +36,22 @@ export function RaceHUD() {
   const localPlayerId = useLobbyStore((s) => s.localPlayerId);
   const selectedVehicleId = useLobbyStore((s) => s.selectedVehicleId);
   const selectedVehicleColor = useLobbyStore((s) => s.selectedVehicleColor);
+  const selectedMapId = useLobbyStore((s) => s.selectedMapId);
   const race = useRaceStore((s) => s.race);
   const countdown = useRaceStore((s) => s.countdown);
   const profile = useAuthStore((s) => s.profile);
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
-  const mapId = race?.mapId || lobby?.settings.mapId || DEFAULT_MAP_ID;
+  const mapFromUrl = searchParams.get('map');
+  const mapId = race?.mapId
+    || (mapFromUrl && getMapById(mapFromUrl) ? mapFromUrl : null)
+    || lobby?.settings.mapId
+    || selectedMapId
+    || DEFAULT_MAP_ID;
   const map = getMapById(mapId);
+  const isAerialMap = map?.roadType === 'aerial';
+  const isGhatMap = map?.roadType === 'hill';
   const playerId = localPlayerId || profile.id;
   const myRacePlayer = race?.players.find((p) => p.playerId === playerId);
   const myLobbyPlayer = lobby?.players.find((p) => p.id === playerId);
@@ -51,6 +60,7 @@ export function RaceHUD() {
   const isMultiplayer = (race?.players.length ?? lobby?.players.length ?? 1) >= 2;
   const isSolo = !isMultiplayer;
   const [elapsedMs, setElapsedMs] = useState(0);
+  const [showGhatStartInfo, setShowGhatStartInfo] = useState(false);
   const { playCelebration } = useAudioManager();
 
   const handleCelebrationComplete = useCallback(() => {
@@ -68,6 +78,16 @@ export function RaceHUD() {
   useEffect(() => {
     if (map) setDistanceRemaining(getMapRaceDistance(map));
   }, [map]);
+
+  useEffect(() => {
+    if (!isGhatMap || !isSolo || countdown !== null) {
+      setShowGhatStartInfo(false);
+      return;
+    }
+    setShowGhatStartInfo(true);
+    const timer = window.setTimeout(() => setShowGhatStartInfo(false), 5000);
+    return () => window.clearTimeout(timer);
+  }, [isGhatMap, isSolo, countdown, mapId]);
 
   useEffect(() => {
     if (countdown !== null) {
@@ -128,7 +148,13 @@ export function RaceHUD() {
       </Suspense>
 
       {countdown !== null && isMultiplayer && (
-        <RaceCountdownOverlay value={countdown} />
+        <RaceCountdownOverlay
+          value={countdown}
+          rules={isGhatMap ? GHAT_COMBAT_START_RULES : undefined}
+        />
+      )}
+      {showGhatStartInfo && isSolo && isGhatMap && (
+        <StartLineInfoOverlay rules={GHAT_COMBAT_START_RULES} />
       )}
 
       {/* HUD Overlay */}
@@ -146,7 +172,7 @@ export function RaceHUD() {
             <div className="text-xs text-gray-500 capitalize">{race?.weather} · {race?.timeOfDay}</div>
           </div>
           <div className="hud-panel">
-            <Speedometer speed={speed} />
+            <Speedometer speed={speed} maxSpeed={isGhatMap ? GHAT_COMBAT_MAX_SPEED_KMH : 300} />
           </div>
         </div>
 
@@ -181,8 +207,12 @@ export function RaceHUD() {
         )}
 
         {/* Controls hint */}
-        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 text-xs text-gray-600">
-          WASD/Arrows · Space=Drift · H=Horn · N=Nitro · C=Camera · Esc=Pause
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 text-xs text-gray-600 text-center">
+          {isAerialMap
+            ? 'W=Throttle · S=Brake · A/D=Turn · ↑/↓=Pitch · F=Missile · H=Horn · C=Camera · Esc=Pause'
+            : isGhatMap
+              ? 'WASD/Arrows · Space=Drift · F=Missile · H=Horn · N=Nitro · C=Camera · Esc=Pause'
+              : 'WASD/Arrows · Space=Drift · H=Horn · N=Nitro · C=Camera · Esc=Pause'}
         </div>
       </div>
 
@@ -217,18 +247,40 @@ export function RaceHUD() {
 export function SoloRace() {
   const setRace = useRaceStore((s) => s.setRace);
   const setWeather = useRaceStore((s) => s.setWeather);
+  const updateMySelection = useLobbyStore((s) => s.updateMySelection);
   const selectedVehicleId = useLobbyStore((s) => s.selectedVehicleId);
   const selectedVehicleColor = useLobbyStore((s) => s.selectedVehicleColor);
   const selectedMapId = useLobbyStore((s) => s.selectedMapId);
   const selectedTrafficLevel = useLobbyStore((s) => s.selectedTrafficLevel);
   const profile = useAuthStore((s) => s.profile);
+  const [searchParams] = useSearchParams();
 
   useEffect(() => {
-    const vehicleId = selectedVehicleId || profile.favoriteVehicle;
-    const vehicleColor = selectedVehicleColor || '#FF9933';
-    const mapId = selectedMapId || DEFAULT_MAP_ID;
+    const mapFromUrl = searchParams.get('map');
+    const vehicleFromUrl = searchParams.get('vehicle');
+    const colorFromUrl = searchParams.get('color');
+    const trafficFromUrl = searchParams.get('traffic');
+
+    const mapId = (mapFromUrl && getMapById(mapFromUrl) ? mapFromUrl : null)
+      ?? selectedMapId
+      ?? DEFAULT_MAP_ID;
+    const vehicleId = (vehicleFromUrl && getVehicleById(vehicleFromUrl) ? vehicleFromUrl : null)
+      ?? selectedVehicleId
+      ?? profile.favoriteVehicle;
+    const vehicleColor = colorFromUrl || selectedVehicleColor || '#FF9933';
+    const trafficLevel = (trafficFromUrl && isTrafficLevel(trafficFromUrl) ? trafficFromUrl : null)
+      ?? selectedTrafficLevel
+      ?? DEFAULT_TRAFFIC_LEVEL;
+
+    updateMySelection(vehicleId, vehicleColor, mapId, trafficLevel);
+
     const map = getMapById(mapId);
-    const spawn = getRaceSpawnPosition(0, 1);
+    const vehicleConfig = getVehicleById(vehicleId);
+    const spawn = map?.roadType === 'aerial' && vehicleConfig?.category === 'aircraft'
+      ? getAerialSpawnPosition(vehicleId, vehicleConfig.aircraftKind, 0)
+      : map?.roadType === 'hill'
+        ? getGhatSpawnPosition(0, 1, map.checkpoints)
+        : getRaceSpawnPosition(0, 1);
     setRace({
       lobbyId: 'solo',
       mapId,
@@ -252,14 +304,26 @@ export function SoloRace() {
       }],
       weather: map?.weatherPool[0] ?? 'clear',
       timeOfDay: map?.defaultTimeOfDay ?? 'morning',
-      trafficLevel: selectedTrafficLevel || DEFAULT_TRAFFIC_LEVEL,
+      trafficLevel,
       startedAt: Date.now(),
       seed: 42,
       trafficSignalState: 'green',
       trafficSignalTimer: 0,
     });
     setWeather(map?.weatherPool[0] ?? 'clear', map?.defaultTimeOfDay ?? 'morning');
-  }, [profile.favoriteVehicle, profile.id, profile.username, selectedMapId, selectedTrafficLevel, selectedVehicleColor, selectedVehicleId, setRace, setWeather]);
+  }, [
+    profile.favoriteVehicle,
+    profile.id,
+    profile.username,
+    searchParams,
+    selectedMapId,
+    selectedTrafficLevel,
+    selectedVehicleColor,
+    selectedVehicleId,
+    setRace,
+    setWeather,
+    updateMySelection,
+  ]);
 
   return <RaceHUD />;
 }

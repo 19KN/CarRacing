@@ -118,7 +118,15 @@ function VisibleSun({ color, isNight }: { color: string; isNight: boolean }) {
   );
 }
 
-export function WeatherSystem({ weather, timeOfDay }: { weather: WeatherType; timeOfDay: TimeOfDay }) {
+export function WeatherSystem({
+  weather,
+  timeOfDay,
+  mapId,
+}: {
+  weather: WeatherType;
+  timeOfDay: TimeOfDay;
+  mapId?: string;
+}) {
   const { scene } = useThree();
   const timeConfig = TIME_COLORS[timeOfDay] || TIME_COLORS.morning;
   const rainRef = useRef<THREE.Points>(null);
@@ -128,6 +136,7 @@ export function WeatherSystem({ weather, timeOfDay }: { weather: WeatherType; ti
   const fillLightRef = useRef<THREE.DirectionalLight>(null);
   const sunTarget = useMemo(() => new THREE.Object3D(), []);
   const isNight = timeOfDay === 'night';
+  const clearChennaiSky = mapId === 'chennai_bangalore';
 
   useLayoutEffect(() => {
     scene.add(sunTarget);
@@ -137,16 +146,20 @@ export function WeatherSystem({ weather, timeOfDay }: { weather: WeatherType; ti
   }, [scene, sunTarget]);
 
   useLayoutEffect(() => {
-    const fogNear = weather === 'fog' ? 30 : timeConfig.fogNear;
-    const fogFar = weather === 'fog' ? 120 : timeConfig.fogFar;
     scene.background = new THREE.Color(timeConfig.sky);
-    scene.fog = new THREE.Fog(timeConfig.sky, fogNear, fogFar);
+    if (clearChennaiSky) {
+      scene.fog = null;
+    } else {
+      const fogNear = weather === 'fog' ? 30 : timeConfig.fogNear;
+      const fogFar = weather === 'fog' ? 120 : timeConfig.fogFar;
+      scene.fog = new THREE.Fog(timeConfig.sky, fogNear, fogFar);
+    }
     playerPositionRegistry.active = true;
     return () => {
       scene.fog = null;
       playerPositionRegistry.active = false;
     };
-  }, [scene, timeConfig.sky, timeConfig.fogNear, timeConfig.fogFar, weather]);
+  }, [scene, timeConfig.sky, timeConfig.fogNear, timeConfig.fogFar, weather, clearChennaiSky]);
 
   const rainGeometry = useMemo(() => {
     const count = weather === 'rain' || weather === 'thunder' ? 5000 : 0;

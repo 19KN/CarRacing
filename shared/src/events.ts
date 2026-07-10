@@ -18,6 +18,8 @@ export const SocketEvents = {
   RACE_FINISH: 'raceFinish',
   PLAYER_FINISHED: 'playerFinished',
   EMOTE: 'emote',
+  MISSILE_FIRE: 'missileFire',
+  MISSILE_HIT: 'missileHit',
 
   // Server -> Client
   LOBBY_UPDATE: 'lobbyUpdate',

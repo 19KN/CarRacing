@@ -23,10 +23,30 @@ export function SoloPracticeSetup() {
 
   const selectedVehicle = VEHICLES.find((v) => v.id === vehicleId);
   const selectedMap = MAPS.find((m) => m.id === mapId);
+  const isAerialMap = selectedMap?.roadType === 'aerial';
+  const isGhatMap = selectedMap?.roadType === 'hill';
+  const vehicleOptions = isAerialMap ? VEHICLES.filter((v) => v.category === 'aircraft') : VEHICLES;
+
+  const handleMapSelect = (id: string) => {
+    setMapId(id);
+    const map = MAPS.find((m) => m.id === id);
+    if (map?.roadType === 'aerial') {
+      const current = VEHICLES.find((v) => v.id === vehicleId);
+      if (current?.category !== 'aircraft') {
+        setVehicleId('helicopter');
+      }
+    }
+  };
 
   const handleStart = () => {
     updateMySelection(vehicleId, color, mapId, trafficLevel);
-    navigate('/race/solo/play');
+    const params = new URLSearchParams({
+      map: mapId,
+      vehicle: vehicleId,
+      color,
+      traffic: trafficLevel,
+    });
+    navigate(`/race/solo/play?${params.toString()}`);
   };
 
   return (
@@ -36,6 +56,16 @@ export function SoloPracticeSetup() {
           <Card>
             <h2 className="text-2xl font-display font-bold text-saffron mb-1">Solo Practice</h2>
             <p className="text-sm text-gray-400 mb-4">Choose your map and vehicle, then hit the road</p>
+            {isAerialMap && (
+              <p className="text-xs text-indiaGreen mb-3">
+                Aerial mode — Helicopter spawns on helipad (H), airplane on runway. Fly to the sky finish line. Press F to fire missiles in multiplayer.
+              </p>
+            )}
+            {isGhatMap && (
+              <p className="text-xs text-indiaGreen mb-3">
+                Ghat combat mode — Max speed 90 km/h for all vehicles. Hold F to fire missiles at friends in multiplayer. Respawn with full health.
+              </p>
+            )}
 
             <h3 className="font-display font-semibold text-saffron mb-3">Choose Map</h3>
             <div className="grid grid-cols-2 gap-2 mb-4">
@@ -43,7 +73,7 @@ export function SoloPracticeSetup() {
                 <button
                   key={m.id}
                   type="button"
-                  onClick={() => setMapId(m.id)}
+                  onClick={() => handleMapSelect(m.id)}
                   className={`p-3 rounded-lg text-xs text-left transition-all ${
                     mapId === m.id
                       ? 'bg-saffron/20 border-2 border-saffron'
@@ -69,7 +99,7 @@ export function SoloPracticeSetup() {
 
             <h3 className="font-display font-semibold text-saffron mb-3">Select Vehicle</h3>
             <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 max-h-72 overflow-y-auto">
-              {VEHICLES.map((v) => (
+              {vehicleOptions.map((v) => (
                 <button
                   key={v.id}
                   type="button"

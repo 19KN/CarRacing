@@ -400,6 +400,55 @@ class AudioManager {
     this.engine.harmGain.gain.setTargetAtTime(health < 50 ? 0.28 : 0.2, t, 0.2);
   }
 
+  playAircraftEngine(
+    kind: 'helicopter' | 'airplane' | 'jet',
+    speed: number,
+    maxSpeed: number,
+    health: number,
+    throttle = 0,
+    rotorSpeed = 0,
+  ) {
+    if (!this.ctx || !this.masterGain) return;
+    this.resumeContext();
+    this.ensureEngine();
+    if (!this.engine) return;
+
+    const t = this.ctx.currentTime;
+    const speedNorm = Math.min(Math.max(speed / Math.max(maxSpeed, 1), 0), 1);
+    const throttleNorm = Math.min(Math.max(throttle, 0), 1);
+    const rotorNorm = Math.min(Math.max(rotorSpeed, 0), 1);
+    const healthMul = health < 50 ? 0.65 : health < 20 ? 0.35 : 1;
+
+    let baseFreq = 55;
+    let harmFreq = 110;
+    let filterFreq = 400;
+    let vol = 0.08;
+
+    if (kind === 'helicopter') {
+      baseFreq = 42 + rotorNorm * 38 + throttleNorm * 20;
+      harmFreq = baseFreq * 3.1;
+      filterFreq = 180 + rotorNorm * 320 + speedNorm * 200;
+      vol = 0.06 + rotorNorm * 0.18 + throttleNorm * 0.08;
+    } else if (kind === 'jet') {
+      baseFreq = 90 + speedNorm * 180 + throttleNorm * 60;
+      harmFreq = baseFreq * 1.8;
+      filterFreq = 500 + speedNorm * 900;
+      vol = 0.05 + speedNorm * 0.2 + throttleNorm * 0.12;
+    } else {
+      baseFreq = 65 + speedNorm * 120 + throttleNorm * 35;
+      harmFreq = baseFreq * 2.4;
+      filterFreq = 300 + speedNorm * 650;
+      vol = 0.05 + speedNorm * 0.16 + throttleNorm * 0.1;
+    }
+
+    this.engine.baseOsc.frequency.setTargetAtTime(baseFreq, t, 0.08);
+    this.engine.harmOsc.frequency.setTargetAtTime(harmFreq, t, 0.08);
+    this.engine.filter.frequency.setTargetAtTime(filterFreq, t, 0.12);
+    this.engine.outputGain.gain.setTargetAtTime(vol * this.volumes.engine * healthMul, t, 0.1);
+    this.engine.baseGain.gain.setTargetAtTime(kind === 'helicopter' ? 0.5 : 0.45, t, 0.15);
+    this.engine.harmGain.gain.setTargetAtTime(kind === 'jet' ? 0.35 : 0.22, t, 0.15);
+  }
+
   playCelebration() {
     if (!this.ctx) this.init();
     if (!this.ctx || !this.masterGain) return;
@@ -739,6 +788,17 @@ export function useAudioManager() {
     audioManager.playEngine(speed, maxSpeed, health, throttle, braking);
   }, []);
 
+  const playAircraftEngine = useCallback((
+    kind: 'helicopter' | 'airplane' | 'jet',
+    speed: number,
+    maxSpeed: number,
+    health: number,
+    throttle = 0,
+    rotorSpeed = 0,
+  ) => {
+    audioManager.playAircraftEngine(kind, speed, maxSpeed, health, throttle, rotorSpeed);
+  }, []);
+
   const playCollisionImpact = useCallback((
     severity: 'small' | 'medium' | 'large' | 'heavy',
     speedKmh: number,
@@ -776,6 +836,7 @@ export function useAudioManager() {
 
   return {
     playEngine,
+    playAircraftEngine,
     playSound,
     playCollisionImpact,
     playCelebration,

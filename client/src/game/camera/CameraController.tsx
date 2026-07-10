@@ -4,10 +4,11 @@ import * as THREE from 'three';
 import { CameraMode } from '@indian-racing/shared';
 import { collisionShake, decayCollisionShake } from '../effects/collisionFeedback';
 
-export const CAM_HEIGHT = 6.5;
-export const CAM_LOOK_HEIGHT = 1.5;
+export const CAM_HEIGHT = 6.0;
+export const CAM_LOOK_HEIGHT = 1.0;
 export const CAM_DISTANCE = 10;
 const CAM_LOOK_AHEAD = 18;
+const CAM_SMOOTH = 14;
 
 function forwardVector(rot: number, out: THREE.Vector3) {
   return out.set(Math.sin(rot), 0, Math.cos(rot));
@@ -18,17 +19,26 @@ export function useCameraController(mode: CameraMode, target: React.RefObject<TH
   const cinematicAngle = useRef(0);
   const lookTarget = useRef(new THREE.Vector3());
   const forward = useRef(new THREE.Vector3());
+  const smoothedCam = useRef(new THREE.Vector3());
+  const smoothedLook = useRef(new THREE.Vector3());
+  const initialized = useRef(false);
+  const lastMode = useRef(mode);
 
   useFrame((_, delta) => {
     if (!target.current) return;
+    if (lastMode.current !== mode) {
+      initialized.current = false;
+      lastMode.current = mode;
+    }
     const pos = target.current.position;
     const rot = target.current.rotation.y;
     const dt = Math.min(delta, 0.05);
     const fwd = forwardVector(rot, forward.current);
+    const vehicleY = pos.y;
 
     const lookAt = lookTarget.current.set(
       pos.x + fwd.x * CAM_LOOK_AHEAD,
-      CAM_LOOK_HEIGHT,
+      vehicleY + CAM_LOOK_HEIGHT,
       pos.z + fwd.z * CAM_LOOK_AHEAD,
     );
     decayCollisionShake(dt);
@@ -37,32 +47,34 @@ export function useCameraController(mode: CameraMode, target: React.RefObject<TH
     const shakeY = shake > 0 ? (Math.random() - 0.5) * shake * 0.9 : 0;
     const shakeZ = shake > 0 ? (Math.random() - 0.5) * shake * 1.4 : 0;
 
+    let desiredCam = smoothedCam.current;
+
     switch (mode) {
       case 'firstPerson': {
-        camera.position.set(
+        desiredCam.set(
           pos.x + fwd.x * 0.5,
-          CAM_LOOK_HEIGHT + 0.7,
+          vehicleY + CAM_LOOK_HEIGHT + 0.7,
           pos.z + fwd.z * 0.5,
         );
         break;
       }
       case 'thirdPerson': {
-        camera.position.set(
+        desiredCam.set(
           pos.x - fwd.x * CAM_DISTANCE,
-          CAM_HEIGHT,
+          vehicleY + CAM_HEIGHT,
           pos.z - fwd.z * CAM_DISTANCE,
         );
         break;
       }
       case 'topView': {
-        camera.position.set(pos.x, CAM_HEIGHT + 24, pos.z);
-        lookAt.set(pos.x, 0, pos.z);
+        desiredCam.set(pos.x, vehicleY + CAM_HEIGHT + 24, pos.z);
+        lookAt.set(pos.x, vehicleY, pos.z);
         break;
       }
       case 'freeCamera': {
-        camera.position.set(
+        desiredCam.set(
           pos.x - Math.sin(rot + Math.PI / 4) * 15,
-          CAM_HEIGHT + 4,
+          vehicleY + CAM_HEIGHT + 4,
           pos.z - Math.cos(rot + Math.PI / 4) * 15,
         );
         break;
@@ -70,14 +82,28 @@ export function useCameraController(mode: CameraMode, target: React.RefObject<TH
       case 'cinematic': {
         cinematicAngle.current += dt * 0.3;
         const angle = rot + cinematicAngle.current;
-        camera.position.set(
+        desiredCam.set(
           pos.x - Math.sin(angle) * 12,
-          CAM_HEIGHT,
+          vehicleY + CAM_HEIGHT,
           pos.z - Math.cos(angle) * 12,
         );
         break;
       }
     }
+
+    if (!initialized.current) {
+      smoothedCam.current.copy(desiredCam);
+      smoothedLook.current.copy(lookAt);
+      initialized.current = true;
+    } else if (mode === 'thirdPerson' || mode === 'firstPerson') {
+      const blend = 1 - Math.exp(-CAM_SMOOTH * dt);
+      smoothedCam.current.lerp(desiredCam, blend);
+      smoothedLook.current.lerp(lookAt, blend);
+      desiredCam = smoothedCam.current;
+      lookAt.copy(smoothedLook.current);
+    }
+
+    camera.position.copy(desiredCam);
 
     if (shake > 0) {
       camera.position.x += shakeX;

@@ -176,6 +176,24 @@ export function setupSocketHandlers(io: Server): void {
       }
     });
 
+    socket.on(SocketEvents.MISSILE_HIT, (data: { attackerId: string; targetId: string; position: { x: number; y: number; z: number } }) => {
+      const { gamingId } = socket.data as SocketData;
+      if (!gamingId) return;
+      const race = raceService.handleMissileHit(gamingId, data);
+      if (race) {
+        const target = race.players.find((p) => p.playerId === data.targetId);
+        if (target) {
+          io.to(gamingId).emit(SocketEvents.HEALTH_UPDATE, {
+            playerId: data.targetId,
+            health: target.health,
+            isRespawning: target.isRespawning,
+            position: target.position,
+            rotation: target.rotation,
+          });
+        }
+      }
+    });
+
     socket.on(SocketEvents.COLLISION, (data) => {
       const { gamingId } = socket.data as SocketData;
       if (!gamingId) return;

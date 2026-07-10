@@ -1,4 +1,6 @@
 import { MapConfig, Vector3 } from './types';
+import { generateGhatCheckpoints, getPathArcLength } from './ghatPath';
+import { generateAerialCheckpoints } from './aerial';
 
 function generateHighwayCheckpoints(count: number, length: number, curve = 0): Vector3[] {
   const points: Vector3[] = [];
@@ -35,11 +37,37 @@ function generateScenery(type: MapConfig['scenery'][0]['type'], count: number, s
   return scenery;
 }
 
+function ghatSigns(): MapConfig['signs'] {
+  return [
+    { text: { hindi: 'घाट रोड', english: 'Ghat Road — Drive Slow', telugu: 'ఘాట్ రోడ్ — నెమ్మదిగా' }, position: { x: 0, y: 4, z: -400 }, rotation: 0 },
+    { text: { hindi: 'खतरनाक मोड़', english: 'Hairpin Bend Ahead', telugu: 'మోడ్ ముందు ఉంది' }, position: { x: 0, y: 4, z: -1200 }, rotation: 0 },
+    { text: { hindi: 'धीरे चलें', english: 'Steep Ghat — Use Low Gear', telugu: 'వంపు రోడ్' }, position: { x: 0, y: 4, z: -2200 }, rotation: 0 },
+  ];
+}
+
+function generateHillScenery(count: number): MapConfig['scenery'] {
+  const scenery: MapConfig['scenery'] = [];
+  for (let i = 0; i < count; i++) {
+    const side = i % 2 === 0 ? 1 : -1;
+    scenery.push({
+      type: i % 5 === 0 ? 'temple' : 'tree',
+      position: {
+        x: side * (12 + (i % 7) * 3),
+        y: 0,
+        z: -(i / count) * 3400 - (i % 11) * 8,
+      },
+      rotation: (i % 8) * 0.4,
+      scale: 0.9 + (i % 4) * 0.25,
+    });
+  }
+  return scenery;
+}
+
 function defaultSigns(): MapConfig['signs'] {
   return [
     { text: { hindi: 'धीरे चलें', english: 'Drive Slow', kannada: 'ನಿಧಾನವಾಗಿ', telugu: 'నెమ్మదిగా' }, position: { x: 15, y: 3, z: -500 }, rotation: 0 },
     { text: { hindi: 'सावधान', english: 'Caution', kannada: 'ಎಚ್ಚರ', telugu: 'జాగ్రత్త' }, position: { x: -15, y: 3, z: -1500 }, rotation: Math.PI },
-    { text: { hindi: 'टोल प्लाज़ा', english: 'Toll Plaza Ahead', kannada: 'ಟೋಲ್ ಪ್ಲಾಜಾ', telugu: 'టోల్ ప్లాజా' }, position: { x: 15, y: 3, z: -3000 }, rotation: 0 },
+    { text: { hindi: 'टोल प्लाज़ा', english: 'Toll Plaza Ahead', kannada: 'ಟೋಲ್ ಪ್ಲಾಜಾ', telugu: 'టోల్ ప్లಾಜಾ' }, position: { x: 15, y: 3, z: -3000 }, rotation: 0 },
   ];
 }
 
@@ -62,36 +90,42 @@ export const MAPS: MapConfig[] = [
   {
     id: 'hyderabad_vijayawada',
     name: 'Hyderabad → Vijayawada',
-    description: 'NH65 expressway through Telangana and Andhra Pradesh',
+    description: 'Tirupati-style ghat roads through the Eastern Ghats',
     distance: 3500,
-    checkpoints: generateHighwayCheckpoints(14, 3500, 0),
-    scenery: generateScenery('petrol_pump', 60, 35),
-    roadType: 'highway',
-    signs: defaultSigns(),
-    trafficDensity: 0.5,
-    weatherPool: ['clear', 'rain', 'thunder'],
-    defaultTimeOfDay: 'afternoon',
+    checkpoints: generateGhatCheckpoints(3500, 32),
+    scenery: generateHillScenery(90),
+    roadType: 'hill',
+    signs: ghatSigns(),
+    trafficDensity: 0.35,
+    weatherPool: ['clear', 'fog', 'rain'],
+    defaultTimeOfDay: 'morning',
     isCircuit: false,
     laps: 1,
   },
   {
     id: 'chennai_bangalore',
     name: 'Chennai → Bangalore',
-    description: 'NH48 through Tamil Nadu and Karnataka',
+    description: 'Forest airfield — helipad, runway, and sky race to Bangalore',
     distance: 4000,
-    checkpoints: generateHighwayCheckpoints(16, 4000, 0),
-    scenery: generateScenery('temple', 70, 38),
-    roadType: 'highway',
+    checkpoints: generateAerialCheckpoints(14, 4000),
+    scenery: generateScenery('tree', 120, 55),
+    roadType: 'aerial',
     signs: defaultSigns(),
-    trafficDensity: 0.55,
-    weatherPool: ['clear', 'rain', 'wind'],
-    defaultTimeOfDay: 'sunrise',
+    trafficDensity: 0,
+    weatherPool: ['clear'],
+    defaultTimeOfDay: 'morning',
     isCircuit: false,
     laps: 1,
   },
 ];
 
 export function getMapRoadLength(map: MapConfig): number {
+  if (map.roadType === 'hill') {
+    return getPathArcLength(map.checkpoints) + 400;
+  }
+  if (map.roadType === 'aerial') {
+    return map.distance + 600;
+  }
   const last = map.checkpoints[map.checkpoints.length - 1];
   return Math.abs(last?.z ?? map.distance) + 600;
 }

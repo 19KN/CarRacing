@@ -52,9 +52,11 @@ const BASE_MAX_STEER = 0.52;
 
 
 
-export function createVehiclePhysics(config: VehicleConfig) {
+export function createVehiclePhysics(config: VehicleConfig, options?: { freeBounds?: boolean; speedCapKmh?: number }) {
 
   const stats = config.stats;
+  const freeBounds = options?.freeBounds ?? false;
+  const speedCapKmh = options?.speedCapKmh ?? GAME_MAX_SPEED_KMH;
 
   let state: VehiclePhysicsState = {
 
@@ -78,7 +80,7 @@ export function createVehiclePhysics(config: VehicleConfig) {
 
 
 
-  const cappedMaxKmh = Math.min(stats.maxSpeed, GAME_MAX_SPEED_KMH);
+  const cappedMaxKmh = Math.min(stats.maxSpeed, speedCapKmh, GAME_MAX_SPEED_KMH);
 
   const maxSpeedMs = cappedMaxKmh / 3.6;
 
@@ -220,10 +222,11 @@ export function createVehiclePhysics(config: VehicleConfig) {
 
     state.position.z += state.velocity.z * dt;
 
-    state.position.y = 0.5;
+    state.position.y = freeBounds ? state.position.y : 0.5;
 
 
 
+    if (!freeBounds) {
     if (state.position.x < DRIVABLE_MIN_X) {
 
       state.position.x = DRIVABLE_MIN_X;
@@ -236,6 +239,7 @@ export function createVehiclePhysics(config: VehicleConfig) {
 
       state.velocity.x = Math.min(0, state.velocity.x);
 
+    }
     }
 
 
@@ -258,7 +262,7 @@ export function createVehiclePhysics(config: VehicleConfig) {
 
     state.position = {
 
-      x: Math.min(DRIVABLE_MAX_X, Math.max(DRIVABLE_MIN_X, x)),
+      x: freeBounds ? x : Math.min(DRIVABLE_MAX_X, Math.max(DRIVABLE_MIN_X, x)),
 
       y,
 
@@ -275,6 +279,49 @@ export function createVehiclePhysics(config: VehicleConfig) {
   }
 
 
+
+  /** Update position without resetting velocity (ghat elevation / lane assist). */
+
+  function applyPosition(x: number, y: number, z: number) {
+
+    state.position = {
+
+      x: freeBounds ? x : Math.min(DRIVABLE_MAX_X, Math.max(DRIVABLE_MIN_X, x)),
+
+      y,
+
+      z,
+
+    };
+
+  }
+
+
+
+  /** Clamp to ghat road edges and stop velocity pushing into walls/mountains. */
+  function applyGhatBoundary(
+    x: number,
+    y: number,
+    z: number,
+    perpX: number,
+    perpZ: number,
+    hitMin: boolean,
+    hitMax: boolean,
+  ) {
+    state.position.x = x;
+    state.position.y = y;
+    state.position.z = z;
+
+    const velLat = state.velocity.x * perpX + state.velocity.z * perpZ;
+    if (hitMin && velLat < 0) {
+      state.velocity.x -= perpX * velLat;
+      state.velocity.z -= perpZ * velLat;
+    }
+    if (hitMax && velLat > 0) {
+      state.velocity.x -= perpX * velLat;
+      state.velocity.z -= perpZ * velLat;
+    }
+  }
 
   function applyTrafficCollision(severity: CollisionSeverity, trafficX: number) {
 
@@ -348,7 +395,7 @@ export function createVehiclePhysics(config: VehicleConfig) {
 
 
 
-  return { update, setPosition, getState, applyTrafficCollision, stopVehicle };
+  return { update, setPosition, applyPosition, applyGhatBoundary, getState, applyTrafficCollision, stopVehicle };
 
 }
 

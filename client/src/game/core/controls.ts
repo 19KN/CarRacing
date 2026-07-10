@@ -1,12 +1,19 @@
 import { useRef, useEffect } from 'react';
 import { VehicleInput } from '../physics/vehiclePhysics';
 
-/** Single shared input so HUD touch controls and GameScene use the same state */
-export const vehicleInputState: VehicleInput = {
+export interface ExtendedVehicleInput extends VehicleInput {
+  pitch: number;
+  fireMissile: boolean;
+}
+
+/** Shared vehicle + aircraft input */
+export const vehicleInputState: ExtendedVehicleInput = {
   accelerate: 0,
   brake: 0,
   steer: 0,
   handbrake: false,
+  pitch: 0,
+  fireMissile: false,
 };
 
 const touchDriveRef = { accel: false, brake: false, steer: false };
@@ -44,16 +51,21 @@ export function useVehicleControls() {
         if (touchDriveRef.brake) vehicleInputState.brake = 1;
       } else {
         const k = keysRef.current;
-        vehicleInputState.accelerate = (k['KeyW'] || k['ArrowUp']) ? 1 : 0;
-        vehicleInputState.brake = (k['KeyS'] || k['ArrowDown']) ? 1 : 0;
+        vehicleInputState.accelerate = k['KeyW'] ? 1 : 0;
+        vehicleInputState.brake = k['KeyS'] ? 1 : 0;
         let steer = 0;
         if (k['KeyA'] || k['ArrowLeft']) steer -= 1;
         if (k['KeyD'] || k['ArrowRight']) steer += 1;
         vehicleInputState.steer = steer;
+        let pitch = 0;
+        if (k['ArrowUp']) pitch += 1;
+        if (k['ArrowDown']) pitch -= 1;
+        vehicleInputState.pitch = pitch;
       }
       vehicleInputState.handbrake = !!keysRef.current['Space'];
       hornRef.current = !!keysRef.current['KeyH'];
       nitroRef.current = !!keysRef.current['KeyN'];
+      vehicleInputState.fireMissile = !!keysRef.current['KeyF'];
     };
 
     const handleDown = (e: KeyboardEvent) => {

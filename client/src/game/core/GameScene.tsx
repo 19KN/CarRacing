@@ -2,8 +2,9 @@ import { useRef, useState, useEffect, Suspense, memo } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { EffectComposer, Bloom, Vignette } from '@react-three/postprocessing';
 import * as THREE from 'three';
-import { getVehicleById, getMapById, DEFAULT_MAP_ID, DEFAULT_VEHICLE_ID, getMapRaceDistance, RACE_START_Z, getRaceSpawnPosition, resolveTrafficDensity, DEFAULT_TRAFFIC_LEVEL } from '@indian-racing/shared';
+import { getVehicleById, getMapById, DEFAULT_MAP_ID, DEFAULT_VEHICLE_ID, getMapRaceDistance, RACE_START_Z, getRaceSpawnPosition, resolveTrafficDensity, DEFAULT_TRAFFIC_LEVEL, getAerialSpawnPosition, getAerialDistanceRemaining, hasCrossedAerialFinish, MISSILE_COOLDOWN_SEC, getGhatSpawnPosition, GHAT_COMBAT_MAX_SPEED_KMH, getMapRespawnHealth } from '@indian-racing/shared';
 import { getFinishLineZ, getMetersToFinishLine } from '../../utils/soloRace';
+import { getGhatLanePosition, clampGhatToRoad } from '../maps/GhatRoad';
 import { VehicleMesh } from '../vehicles/VehicleMesh';
 import { MapEnvironment } from '../maps/MapEnvironment';
 import { PLAYER_LANE_X } from '../maps/IndianHighwayRoad';
@@ -21,6 +22,9 @@ import { triggerCollisionFeedback } from '../effects/collisionFeedback';
 import { useCameraController, useCameraSwitcher, CAM_DISTANCE, CAM_HEIGHT, CAM_LOOK_HEIGHT } from '../camera/CameraController';
 import { useVehicleControls } from '../core/controls';
 import { createVehiclePhysics } from '../physics/vehiclePhysics';
+import { createAircraftPhysics } from '../physics/aircraftPhysics';
+import { fireMissile, findMissileHit } from '../combat/missileSystem';
+import { MissileVisuals } from '../combat/MissileVisuals';
 import { useAudioManager } from '../audio/AudioManager';
 import { useNetworkSync, RemotePlayer } from '../network/NetworkSync';
 import { useAuthStore, useRaceStore, useLobbyStore, useSettingsStore } from '../../stores';
@@ -48,15 +52,26 @@ function PlayerVehicle({
 }) {
   const groupRef = useRef<THREE.Group>(null);
   const config = getVehicleById(vehicleId) || getVehicleById(DEFAULT_VEHICLE_ID)!;
-  const physics = useRef(createVehiclePhysics(config));
+  const map = getMapById(mapId) || getMapById(DEFAULT_MAP_ID)!;
+  const isGhatMap = map.roadType === 'hill';
+  const isAerialMap = map.roadType === 'aerial';
+  const isAircraft = config.category === 'aircraft';
+  const canUseMissiles = (isAerialMap && isAircraft) || isGhatMap;
+  const physics = useRef(createVehiclePhysics(config, {
+    freeBounds: isGhatMap,
+    speedCapKmh: isGhatMap ? GHAT_COMBAT_MAX_SPEED_KMH : undefined,
+  }));
+  const aircraftPhysics = useRef(isAircraft ? createAircraftPhysics(config) : null);
   const activeVehicleId = useRef(vehicleId);
   const { inputRef, hornRef, nitroRef } = useVehicleControls();
+  const aircraftVisual = useRef({ rotorSpeed: 0, pitch: 0, onGround: true });
+  const missileCooldown = useRef(0);
   const { indexRef } = useCameraSwitcher();
   const [cameraMode, setCameraMode] = useState<CameraMode>('thirdPerson');
   const [isDestroyed, setIsDestroyed] = useState(false);
   const health = useRaceStore((s) => s.health);
   const respawnRequest = useRaceStore((s) => s.respawnRequest);
-  const { playEngine, playSound, playCollisionImpact, playCelebration, playExplosion, stopEngine, playOvertakeSound } = useAudioManager();
+  const { playEngine, playAircraftEngine, playSound, playCollisionImpact, playCelebration, playExplosion, stopEngine, playOvertakeSound } = useAudioManager();
   const posRef = useRef({ x: spawnPosition.x, y: spawnPosition.y, z: spawnPosition.z });
   const rotRef = useRef(spawnPosition.rotation);
   const velRef = useRef({ x: 0, y: 0, z: 0 });
@@ -76,7 +91,8 @@ function PlayerVehicle({
   const lastDistanceReport = useRef(-1);
   const finishedRef = useRef(false);
   const maxSpeedRef = useRef(0);
-  const map = getMapById(mapId) || getMapById(DEFAULT_MAP_ID)!;
+  const ghatPitchRef = useRef(0);
+  const effectiveMaxSpeedKmh = isGhatMap ? GHAT_COMBAT_MAX_SPEED_KMH : config.stats.maxSpeed;
   const totalRaceDistance = getMapRaceDistance(map);
   const finishLineZ = getFinishLineZ(totalRaceDistance, RACE_START_Z);
 
@@ -94,13 +110,26 @@ function PlayerVehicle({
   const getRespawnPoint = () => {
     const cp = map.checkpoints[Math.max(0, checkpointRef.current)];
     if (cp) {
+      if (map.roadType === 'hill') {
+        const lane = getGhatLanePosition(map.checkpoints, cp.z);
+        return { x: lane.x, y: lane.y, z: lane.z, rotation: lane.rotation };
+      }
+      if (isAerialMap && isAircraft) {
+        return getAerialSpawnPosition(vehicleId, config.aircraftKind, 0);
+      }
       return { x: cp.x, y: 0.5, z: cp.z, rotation: spawnPosition.rotation };
     }
     return spawnPosition;
   };
 
-  const completeRespawn = (point: { x: number; y: number; z: number; rotation: number }, nextHealth = 50) => {
-    physics.current.setPosition(point.x, point.y, point.z, point.rotation);
+  const respawnHealth = getMapRespawnHealth(map.roadType);
+
+  const completeRespawn = (point: { x: number; y: number; z: number; rotation: number }, nextHealth = respawnHealth) => {
+    if (isAerialMap && isAircraft && aircraftPhysics.current) {
+      aircraftPhysics.current.setPosition(point.x, point.y, point.z, point.rotation);
+    } else {
+      physics.current.setPosition(point.x, point.y, point.z, point.rotation);
+    }
     posRef.current = { x: point.x, y: point.y, z: point.z };
     rotRef.current = point.rotation;
     velRef.current = { x: 0, y: 0, z: 0 };
@@ -126,6 +155,7 @@ function PlayerVehicle({
     useRaceStore.getState().setSpeed(0);
     lastSpeedReport.current = 0;
     physics.current.stopVehicle();
+    aircraftPhysics.current?.stopVehicle();
     stopEngine();
     playExplosion();
     triggerCollisionFeedback('heavy', maxSpeedRef.current);
@@ -153,9 +183,17 @@ function PlayerVehicle({
     if (activeVehicleId.current !== vehicleId) {
       activeVehicleId.current = vehicleId;
       const nextConfig = getVehicleById(vehicleId) || getVehicleById(DEFAULT_VEHICLE_ID)!;
-      physics.current = createVehiclePhysics(nextConfig);
+      physics.current = createVehiclePhysics(nextConfig, {
+        freeBounds: isGhatMap,
+        speedCapKmh: isGhatMap ? GHAT_COMBAT_MAX_SPEED_KMH : undefined,
+      });
+      aircraftPhysics.current = nextConfig.category === 'aircraft' ? createAircraftPhysics(nextConfig) : null;
     }
-    physics.current.setPosition(spawnPosition.x, spawnPosition.y, spawnPosition.z, spawnPosition.rotation);
+    if (isAerialMap && isAircraft && aircraftPhysics.current) {
+      aircraftPhysics.current.setPosition(spawnPosition.x, spawnPosition.y, spawnPosition.z, spawnPosition.rotation);
+    } else {
+      physics.current.setPosition(spawnPosition.x, spawnPosition.y, spawnPosition.z, spawnPosition.rotation);
+    }
     if (groupRef.current) {
       groupRef.current.position.set(spawnPosition.x, spawnPosition.y, spawnPosition.z);
       groupRef.current.rotation.y = spawnPosition.rotation;
@@ -212,12 +250,66 @@ function PlayerVehicle({
     }
 
     let state = physics.current.getState();
-    if (isRamming) {
+    let aircraftState = aircraftPhysics.current?.getState();
+
+    if (isAerialMap && isAircraft && aircraftPhysics.current) {
+      const inp = inputRef.current;
+      aircraftState = aircraftPhysics.current.update(
+        {
+          throttle: inp.accelerate,
+          brake: inp.brake,
+          yaw: inp.steer,
+          pitch: inp.pitch,
+        },
+        delta,
+        health,
+      );
+      state = {
+        position: aircraftState.position,
+        rotation: aircraftState.rotation,
+        velocity: aircraftState.velocity,
+        speed: aircraftState.speed,
+        rpm: 0,
+        gear: 1,
+        isDrifting: false,
+      };
+      aircraftVisual.current = {
+        rotorSpeed: aircraftState.rotorSpeed,
+        pitch: aircraftState.pitch,
+        onGround: aircraftState.onGround,
+      };
+    } else if (isRamming) {
       physics.current.setPosition(ramPos.x, ramPos.y, ramPos.z, rotRef.current);
       state = physics.current.getState();
     } else {
-      state = physics.current.update(inputRef.current, delta, health);
+      const inp = inputRef.current;
+      const driveInput = {
+        ...inp,
+        accelerate: Math.max(inp.accelerate, inp.pitch > 0 ? 1 : 0),
+        brake: Math.max(inp.brake, inp.pitch < 0 ? 1 : 0),
+      };
+      state = physics.current.update(driveInput, delta, health);
     }
+
+    if (map.roadType === 'hill') {
+      const lane = getGhatLanePosition(map.checkpoints, state.position.z);
+      const bounds = clampGhatToRoad(map.checkpoints, state.position.x, state.position.z);
+      const x = bounds.x;
+      const y = lane.y;
+      const z = state.position.z;
+      physics.current.applyGhatBoundary(
+        x,
+        y,
+        z,
+        bounds.perpX,
+        bounds.perpZ,
+        bounds.hitMin,
+        bounds.hitMax,
+      );
+      state = physics.current.getState();
+      ghatPitchRef.current = lane.pitch * 0.35;
+    }
+
     posRef.current = state.position;
     rotRef.current = state.rotation;
     velRef.current = state.velocity;
@@ -225,6 +317,13 @@ function PlayerVehicle({
     if (groupRef.current) {
       groupRef.current.position.set(state.position.x, state.position.y, state.position.z);
       groupRef.current.rotation.y = state.rotation;
+      if (isAircraft && aircraftState) {
+        groupRef.current.rotation.x = aircraftState.pitch * 0.5;
+      } else if (isGhatMap) {
+        groupRef.current.rotation.x = ghatPitchRef.current;
+      } else {
+        groupRef.current.rotation.x = 0;
+      }
     }
 
     playerPositionRegistry.x = state.position.x;
@@ -245,24 +344,81 @@ function PlayerVehicle({
       useRaceStore.getState().setMaxRaceSpeed(state.speed);
     }
 
-    const remaining = getMetersToFinishLine(state.position.z, totalRaceDistance, RACE_START_Z);
+    const remaining = isAerialMap && isAircraft
+      ? getAerialDistanceRemaining(state.position.z)
+      : getMetersToFinishLine(state.position.z, totalRaceDistance, RACE_START_Z);
     const roundedRemaining = Math.round(remaining);
     if (roundedRemaining !== lastDistanceReport.current) {
       useRaceStore.getState().setDistanceRemaining(remaining);
       lastDistanceReport.current = roundedRemaining;
     }
 
-    if (!finishedRef.current && (remaining <= 0.5 || state.position.z <= finishLineZ)) {
-      completeFinish();
+    if (!finishedRef.current) {
+      const aerialDone = isAerialMap && isAircraft && hasCrossedAerialFinish(state.position.x, state.position.y, state.position.z);
+      const groundDone = !isAerialMap && (remaining <= 0.5 || state.position.z <= finishLineZ);
+      if (aerialDone || groundDone) {
+        completeFinish();
+      }
     }
 
-    playEngine(
-      state.speed,
-      config.stats.maxSpeed,
-      health,
-      inputRef.current.accelerate,
-      inputRef.current.brake,
-    );
+    if (isAerialMap && isAircraft) {
+      playAircraftEngine(
+        config.aircraftKind || 'airplane',
+        state.speed,
+        config.stats.maxSpeed,
+        health,
+        inputRef.current.accelerate,
+        aircraftVisual.current.rotorSpeed,
+      );
+    } else {
+      playEngine(
+        state.speed,
+        effectiveMaxSpeedKmh,
+        health,
+        inputRef.current.accelerate,
+        inputRef.current.brake,
+      );
+    }
+
+    missileCooldown.current = Math.max(0, missileCooldown.current - delta);
+    const missilePressed = inputRef.current.fireMissile;
+    if (canUseMissiles && missilePressed && missileCooldown.current <= 0) {
+      const pitch = isAerialMap ? (aircraftState?.pitch ?? 0) : ghatPitchRef.current;
+      const hx = Math.sin(state.rotation);
+      const hz = Math.cos(state.rotation);
+      const launchForward = isGhatMap ? 1.6 : 0;
+      const launchY = state.position.y + (isGhatMap ? 0.55 : 0);
+      fireMissile(
+        localPlayerId,
+        state.position.x + hx * launchForward,
+        launchY,
+        state.position.z + hz * launchForward,
+        state.rotation,
+        pitch,
+      );
+      playSound('nitro');
+      missileCooldown.current = MISSILE_COOLDOWN_SEC;
+      if (!isSolo) {
+        getSocket().emit(SocketEvents.MISSILE_FIRE, {
+          ownerId: localPlayerId,
+          position: { x: state.position.x, y: launchY, z: state.position.z },
+          rotation: state.rotation,
+        });
+      }
+    }
+
+    if (canUseMissiles && !isSolo) {
+      const remotePlayers = useRaceStore.getState().remotePlayers;
+      const hitId = findMissileHit(localPlayerId, remotePlayers, isGhatMap ? 5.5 : 6);
+      if (hitId) {
+        getSocket().emit(SocketEvents.MISSILE_HIT, {
+          attackerId: localPlayerId,
+          targetId: hitId,
+          position: { ...state.position },
+        });
+        playCollisionImpact('large', state.speed);
+      }
+    }
 
     const hornPressed = hornRef.current;
     if (hornPressed && !prevHornRef.current && hornCooldown.current <= 0) {
@@ -294,7 +450,7 @@ function PlayerVehicle({
     }
 
     collisionCooldown.current = Math.max(0, collisionCooldown.current - delta);
-    if (collisionCooldown.current <= 0 && state.speed > 3 && !isRamming) {
+    if (collisionCooldown.current <= 0 && state.speed > 3 && !isRamming && !(isAerialMap && isAircraft)) {
       if (!isSolo) {
         const remotePlayers = useRaceStore.getState().remotePlayers;
         const hitPlayerId = findPlayerCollision(state.position.x, state.position.z, remotePlayers);
@@ -397,9 +553,11 @@ function PlayerVehicle({
     const nextCp = checkpoints[checkpointRef.current + 1];
     if (nextCp) {
       const dx = state.position.x - nextCp.x;
+      const dy = isAerialMap ? state.position.y - nextCp.y : 0;
       const dz = state.position.z - nextCp.z;
-      const dist = Math.sqrt(dx * dx + dz * dz);
-      if (dist < 30) {
+      const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+      const hitRadius = isAerialMap ? 55 : 30;
+      if (dist < hitRadius) {
         checkpointRef.current++;
         if (!isSolo) {
           getSocket().emit(SocketEvents.CHECKPOINT, { checkpointIndex: checkpointRef.current });
@@ -413,7 +571,17 @@ function PlayerVehicle({
 
   return (
     <group ref={groupRef}>
-      {!isDestroyed && health > 0 && <VehicleMesh key={vehicleId} config={config} color={vehicleColor} />}
+      {!isDestroyed && health > 0 && (
+        <VehicleMesh
+          key={vehicleId}
+          config={config}
+          color={vehicleColor}
+          rotorSpeed={aircraftVisual.current.rotorSpeed}
+          pitch={aircraftVisual.current.pitch}
+          onGround={aircraftVisual.current.onGround}
+          visualRef={aircraftVisual}
+        />
+      )}
       <ExplosionFire active={isDestroyed || health <= 0} />
       <SmokeParticles active={!isDestroyed && health < 50 && health > 0} position={[0, 0.5, -1]} />
       {!isSolo && !isDestroyed && health > 0 && <PlayerNameLabel name={username} isLocal />}
@@ -447,9 +615,24 @@ function GameWorld({
   const myIndex = race
     ? Math.max(0, race.players.findIndex((p) => p.playerId === resolvedPlayerId))
     : Math.max(0, lobbyPlayers.findIndex((p) => p.id === resolvedPlayerId));
-  const spawnPosition = myRacePlayer
-    ? { x: myRacePlayer.position.x, y: myRacePlayer.position.y, z: myRacePlayer.position.z, rotation: myRacePlayer.rotation }
-    : (() => {
+  const isGhatMap = map.roadType === 'hill';
+  const isAerialMap = map.roadType === 'aerial';
+  const spawnVehicleConfig = getVehicleById(vehicleId);
+  const spawnPosition = (() => {
+      if (isGhatMap) {
+        return getGhatSpawnPosition(myIndex, Math.max(1, playerCount), map.checkpoints);
+      }
+      if (isAerialMap && spawnVehicleConfig?.category === 'aircraft') {
+        return getAerialSpawnPosition(vehicleId, spawnVehicleConfig.aircraftKind, myIndex);
+      }
+      if (myRacePlayer) {
+        return {
+          x: myRacePlayer.position.x,
+          y: myRacePlayer.position.y,
+          z: myRacePlayer.position.z,
+          rotation: myRacePlayer.rotation,
+        };
+      }
       const spawn = getRaceSpawnPosition(myIndex, Math.max(2, playerCount));
       return { x: spawn.x, y: spawn.y, z: spawn.z, rotation: spawn.rotation };
     })();
@@ -468,9 +651,12 @@ function GameWorld({
 
   return (
     <>
-      <WeatherSystem weather={weather} timeOfDay={timeOfDay} />
+      <WeatherSystem weather={weather} timeOfDay={timeOfDay} mapId={mapId} />
       <MapEnvironment map={map} />
-      <TrafficSystem path={map.checkpoints} density={trafficDensity} signalState={signalState} />
+      {!isGhatMap && !isAerialMap && (
+        <TrafficSystem path={map.checkpoints} density={trafficDensity} signalState={signalState} />
+      )}
+      {(isAerialMap || isGhatMap) && <MissileVisuals />}
       <PlayerVehicle
         vehicleId={vehicleId}
         vehicleColor={vehicleColor}
@@ -513,13 +699,13 @@ export const GameScene = memo(function GameScene({
     <Canvas
       shadows={settings.shadows}
       camera={{
-        position: [PLAYER_LANE_X, CAM_HEIGHT, RACE_START_Z + CAM_DISTANCE],
+        position: [PLAYER_LANE_X, 0.5 + CAM_HEIGHT, RACE_START_Z + CAM_DISTANCE],
         fov: 65,
         near: 0.1,
         far: settings.drawDistance,
       }}
       onCreated={({ camera }) => {
-        camera.lookAt(PLAYER_LANE_X, CAM_LOOK_HEIGHT, RACE_START_Z - 18);
+        camera.lookAt(PLAYER_LANE_X, 0.5 + CAM_LOOK_HEIGHT, RACE_START_Z - 18);
       }}
       gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping }}
       style={{ width: '100vw', height: '100vh' }}

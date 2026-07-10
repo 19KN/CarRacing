@@ -1,7 +1,8 @@
 export type LobbyStatus = 'waiting' | 'countdown' | 'racing' | 'finished';
 export type MaxPlayers = 2 | 4 | 8 | 16;
-export type VehicleCategory = 'two_wheeler' | 'car' | 'commercial' | 'special';
-export type RoadType = 'highway' | 'city' | 'hill' | 'village' | 'beach' | 'circuit';
+export type VehicleCategory = 'two_wheeler' | 'car' | 'commercial' | 'special' | 'aircraft';
+export type AircraftKind = 'helicopter' | 'airplane' | 'jet';
+export type RoadType = 'highway' | 'city' | 'hill' | 'village' | 'beach' | 'circuit' | 'aerial';
 export type WeatherType = 'clear' | 'rain' | 'fog' | 'thunder' | 'wind';
 export type TimeOfDay = 'morning' | 'afternoon' | 'evening' | 'night' | 'sunrise' | 'sunset';
 export type TrafficSignalState = 'red' | 'yellow' | 'green';
@@ -45,6 +46,8 @@ export interface VehicleConfig {
   };
   unlockCost: number;
   description: string;
+  /** Aircraft-only subtype for flight physics and spawn pad. */
+  aircraftKind?: AircraftKind;
 }
 
 export interface SignConfig {
@@ -189,8 +192,14 @@ export interface CollisionPayload {
   severity: CollisionSeverity;
   position: Vector3;
   targetPlayerId?: string;
-  /** traffic = AI cars on road; obstacle = median/trees */
-  collisionType?: 'traffic' | 'obstacle';
+  /** traffic = AI cars on road; obstacle = median/trees; missile = aerial combat */
+  collisionType?: 'traffic' | 'obstacle' | 'missile';
+}
+
+export interface MissileHitPayload {
+  attackerId: string;
+  targetId: string;
+  position: Vector3;
 }
 
 export interface PlayerRamPayload {

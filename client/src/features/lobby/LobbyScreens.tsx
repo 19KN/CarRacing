@@ -4,7 +4,7 @@ import { Button, Card, Input } from '../../components/ui';
 import { useAuthStore, useLobbyStore, useRaceStore } from '../../stores';
 import { apiFetch } from '../../utils/api';
 import { connectSocket, joinLobbySocket, leaveLobbySocket, getSocket, SocketEvents } from '../../utils/socket';
-import { VEHICLES, VEHICLE_COLORS, MAPS, MaxPlayers, DEFAULT_MAP_ID, DEFAULT_TRAFFIC_LEVEL, TrafficLevel, TRAFFIC_LEVEL_LABELS } from '@indian-racing/shared';
+import { VEHICLES, VEHICLE_COLORS, MAPS, MaxPlayers, DEFAULT_MAP_ID, DEFAULT_TRAFFIC_LEVEL, TrafficLevel, TRAFFIC_LEVEL_LABELS, GHAT_COMBAT_START_RULES } from '@indian-racing/shared';
 import { TrafficLevelPicker } from '../../components/ui/TrafficLevelPicker';
 import { copyToClipboard } from '../../utils/progression';
 import { useAudioManager } from '../../game/audio/AudioManager';
@@ -104,6 +104,9 @@ export function CreateLobby() {
             {selectedMap && (
               <p className="text-xs text-gray-500 mb-4 text-center">
                 Selected: <span className="text-saffron">{selectedMap.name}</span>
+                {selectedMap.roadType === 'hill' && (
+                  <span className="block text-indiaGreen mt-1">{GHAT_COMBAT_START_RULES[1]} · {GHAT_COMBAT_START_RULES[2]}</span>
+                )}
               </p>
             )}
 
@@ -364,6 +367,11 @@ export function LobbyScreen() {
                   <div className="text-gray-500 mt-1 capitalize">
                     Traffic: {TRAFFIC_LEVEL_LABELS[lobby.settings.trafficLevel ?? DEFAULT_TRAFFIC_LEVEL]}
                   </div>
+                  {selectedMap.roadType === 'hill' && (
+                    <div className="text-indiaGreen text-xs mt-2 max-w-[12rem] ml-auto leading-snug">
+                      {GHAT_COMBAT_START_RULES[1]} · {GHAT_COMBAT_START_RULES[2]}
+                    </div>
+                  )}
                 </div>
               )}
             </div>

@@ -61,12 +61,12 @@ export function HealthBar({ health }: { health: number }) {
   );
 }
 
-export function Speedometer({ speed }: { speed: number }) {
-  const display = Math.min(Math.round(speed), 300);
+export function Speedometer({ speed, maxSpeed = 300 }: { speed: number; maxSpeed?: number }) {
+  const display = Math.min(Math.round(speed), maxSpeed);
   return (
     <div className="text-center min-w-[5.5rem]">
       <div className="text-4xl font-display font-bold text-white tabular-nums">{display}</div>
-      <div className="text-xs text-gray-400 uppercase tracking-wider">km/h · max 300</div>
+      <div className="text-xs text-gray-400 uppercase tracking-wider">km/h · max {maxSpeed}</div>
     </div>
   );
 }

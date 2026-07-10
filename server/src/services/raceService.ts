@@ -1,10 +1,10 @@
 import {
-  RaceState, RacePlayerState, WeatherType, TimeOfDay, TrafficSignalState,
-  PositionUpdatePayload, CollisionPayload, CollisionSeverity,
-  HEALTH_DAMAGE, getMapById, COIN_REWARDS, XP_PER_RACE, XP_PER_WIN,
-  LeaderboardEntry, RaceResult, getRaceSpawnPosition, computeRaceProgress,
+  RaceState, RacePlayerState, PositionUpdatePayload, CollisionPayload, CollisionSeverity,
+  HEALTH_DAMAGE, getMapById, getVehicleById, COIN_REWARDS, XP_PER_RACE, XP_PER_WIN,
+  LeaderboardEntry, RaceResult, getRaceSpawnPosition, getGhatSpawnPosition, getGhatLanePosition,
+  getMapRespawnHealth, computeRaceProgress, getAerialSpawnPosition, MISSILE_DAMAGE,
 } from '@indian-racing/shared';
-import { PlayerFinishedPayload, Lobby, LobbyPlayer } from '@indian-racing/shared';
+import { PlayerFinishedPayload, Lobby, LobbyPlayer, TimeOfDay } from '@indian-racing/shared';
 import { store } from './memoryStore';
 import { config } from '../config';
 
@@ -26,7 +26,7 @@ export class RaceService {
       lobbyId: lobby.gamingId,
       mapId: lobby.settings.mapId,
       status: 'racing',
-      players: lobby.players.map((p, i) => this.createPlayerState(p, i, lobby.players.length)),
+      players: lobby.players.map((p, i) => this.createPlayerState(p, i, lobby.players.length, lobby.settings.mapId)),
       weather,
       timeOfDay,
       trafficLevel: lobby.settings.trafficLevel,
@@ -40,8 +40,14 @@ export class RaceService {
     return race;
   }
 
-  private createPlayerState(player: LobbyPlayer, index: number, totalPlayers: number): RacePlayerState {
-    const spawn = getRaceSpawnPosition(index, totalPlayers);
+  private createPlayerState(player: LobbyPlayer, index: number, totalPlayers: number, mapId: string): RacePlayerState {
+    const map = getMapById(mapId);
+    const vehicle = getVehicleById(player.vehicleId);
+    const spawn = map?.roadType === 'aerial' && vehicle?.category === 'aircraft'
+      ? getAerialSpawnPosition(player.vehicleId, vehicle.aircraftKind, index)
+      : map?.roadType === 'hill'
+        ? getGhatSpawnPosition(index, totalPlayers, map.checkpoints)
+        : getRaceSpawnPosition(index, totalPlayers);
     return {
       playerId: player.id,
       username: player.username,
@@ -78,6 +84,22 @@ export class RaceService {
     );
 
     this.updateRanks(race);
+    store.setRace(gamingId, race);
+    return race;
+  }
+
+  handleMissileHit(gamingId: string, payload: { attackerId: string; targetId: string }): RaceState | null {
+    const race = store.getRace(gamingId);
+    if (!race) return null;
+
+    const target = race.players.find((p) => p.playerId === payload.targetId);
+    if (!target || target.isRespawning) return null;
+
+    target.health = Math.max(0, target.health - MISSILE_DAMAGE);
+    if (target.health <= 0) {
+      this.startRespawn(gamingId, payload.targetId);
+    }
+
     store.setRace(gamingId, race);
     return race;
   }
@@ -123,11 +145,18 @@ export class RaceService {
     const player = race.players.find((p) => p.playerId === playerId);
     if (!player) return null;
 
-    player.health = 50;
-    player.isRespawning = false;
     const map = getMapById(race.mapId);
+    player.health = getMapRespawnHealth(map?.roadType);
+    player.isRespawning = false;
     if (map && map.checkpoints[player.checkpointIndex]) {
-      player.position = { ...map.checkpoints[player.checkpointIndex], y: 0.5 };
+      const cp = map.checkpoints[player.checkpointIndex];
+      if (map.roadType === 'hill') {
+        const lane = getGhatLanePosition(map.checkpoints, cp.z);
+        player.position = { x: lane.x, y: lane.y, z: lane.z };
+        player.rotation = lane.rotation;
+      } else {
+        player.position = { ...cp, y: 0.5 };
+      }
     }
     player.velocity = { x: 0, y: 0, z: 0 };
     store.setRace(gamingId, race);
