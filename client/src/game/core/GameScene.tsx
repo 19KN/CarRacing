@@ -2,7 +2,7 @@ import { useRef, useState, useEffect, Suspense, memo } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { EffectComposer, Bloom, Vignette } from '@react-three/postprocessing';
 import * as THREE from 'three';
-import { getVehicleById, getMapById, DEFAULT_MAP_ID, DEFAULT_VEHICLE_ID, getMapRaceDistance, RACE_START_Z, getRaceSpawnPosition, resolveTrafficDensity, DEFAULT_TRAFFIC_LEVEL, getAerialSpawnPosition, getAerialDistanceRemaining, hasCrossedAerialFinish, MISSILE_COOLDOWN_SEC, getGhatSpawnPosition, GHAT_COMBAT_MAX_SPEED_KMH, getMapRespawnHealth } from '@indian-racing/shared';
+import { getVehicleById, getMapById, DEFAULT_MAP_ID, DEFAULT_VEHICLE_ID, getMapRaceDistance, RACE_START_Z, getRaceSpawnPosition, resolveTrafficDensity, DEFAULT_TRAFFIC_LEVEL, getAerialSpawnPosition, getAerialDistanceRemaining, hasCrossedAerialFinish, MISSILE_COOLDOWN_SEC, getGhatSpawnPosition, GHAT_COMBAT_MAX_SPEED_KMH, AERIAL_COMBAT_MAX_SPEED_KMH, clampAerialToCorridor, getMapRespawnHealth } from '@indian-racing/shared';
 import { getFinishLineZ, getMetersToFinishLine } from '../../utils/soloRace';
 import { getGhatLanePosition, clampGhatToRoad } from '../maps/GhatRoad';
 import { VehicleMesh } from '../vehicles/VehicleMesh';
@@ -61,7 +61,7 @@ function PlayerVehicle({
     freeBounds: isGhatMap,
     speedCapKmh: isGhatMap ? GHAT_COMBAT_MAX_SPEED_KMH : undefined,
   }));
-  const aircraftPhysics = useRef(isAircraft ? createAircraftPhysics(config) : null);
+  const aircraftPhysics = useRef(isAircraft ? createAircraftPhysics(config, { speedCapKmh: AERIAL_COMBAT_MAX_SPEED_KMH }) : null);
   const activeVehicleId = useRef(vehicleId);
   const { inputRef, hornRef, nitroRef } = useVehicleControls();
   const aircraftVisual = useRef({ rotorSpeed: 0, pitch: 0, onGround: true });
@@ -92,7 +92,11 @@ function PlayerVehicle({
   const finishedRef = useRef(false);
   const maxSpeedRef = useRef(0);
   const ghatPitchRef = useRef(0);
-  const effectiveMaxSpeedKmh = isGhatMap ? GHAT_COMBAT_MAX_SPEED_KMH : config.stats.maxSpeed;
+  const effectiveMaxSpeedKmh = isGhatMap
+    ? GHAT_COMBAT_MAX_SPEED_KMH
+    : (isAerialMap && isAircraft)
+      ? AERIAL_COMBAT_MAX_SPEED_KMH
+      : config.stats.maxSpeed;
   const totalRaceDistance = getMapRaceDistance(map);
   const finishLineZ = getFinishLineZ(totalRaceDistance, RACE_START_Z);
 
@@ -187,7 +191,9 @@ function PlayerVehicle({
         freeBounds: isGhatMap,
         speedCapKmh: isGhatMap ? GHAT_COMBAT_MAX_SPEED_KMH : undefined,
       });
-      aircraftPhysics.current = nextConfig.category === 'aircraft' ? createAircraftPhysics(nextConfig) : null;
+      aircraftPhysics.current = nextConfig.category === 'aircraft'
+        ? createAircraftPhysics(nextConfig, { speedCapKmh: AERIAL_COMBAT_MAX_SPEED_KMH })
+        : null;
     }
     if (isAerialMap && isAircraft && aircraftPhysics.current) {
       aircraftPhysics.current.setPosition(spawnPosition.x, spawnPosition.y, spawnPosition.z, spawnPosition.rotation);
@@ -278,6 +284,25 @@ function PlayerVehicle({
         pitch: aircraftState.pitch,
         onGround: aircraftState.onGround,
       };
+
+      const corridor = clampAerialToCorridor(map.checkpoints, state.position.x, state.position.z);
+      aircraftPhysics.current.applyCorridorBoundary(
+        corridor.x,
+        state.position.y,
+        state.position.z,
+        corridor.hitMin,
+        corridor.hitMax,
+      );
+      aircraftState = aircraftPhysics.current.getState();
+      state = {
+        position: aircraftState.position,
+        rotation: aircraftState.rotation,
+        velocity: aircraftState.velocity,
+        speed: aircraftState.speed,
+        rpm: 0,
+        gear: 1,
+        isDrifting: false,
+      };
     } else if (isRamming) {
       physics.current.setPosition(ramPos.x, ramPos.y, ramPos.z, rotRef.current);
       state = physics.current.getState();
@@ -365,7 +390,7 @@ function PlayerVehicle({
       playAircraftEngine(
         config.aircraftKind || 'airplane',
         state.speed,
-        config.stats.maxSpeed,
+        effectiveMaxSpeedKmh,
         health,
         inputRef.current.accelerate,
         aircraftVisual.current.rotorSpeed,

@@ -3,6 +3,7 @@ import {
   getAircraftKind,
   AERIAL_COMBAT_MAX_ALTITUDE,
   AERIAL_COMBAT_ALT_SOFT,
+  AERIAL_COMBAT_MAX_SPEED_KMH,
   AERIAL_HELIPAD,
 } from '@indian-racing/shared';
 
@@ -84,9 +85,10 @@ function applyCombatAltitudeCap(altitude: number, verticalVel: number, liftInput
   return vy;
 }
 
-export function createAircraftPhysics(config: VehicleConfig) {
+export function createAircraftPhysics(config: VehicleConfig, options?: { speedCapKmh?: number }) {
   const kind = getAircraftKind(config.id, config.aircraftKind);
-  const maxSpeedMs = config.stats.maxSpeed / 3.6;
+  const speedCapKmh = options?.speedCapKmh ?? AERIAL_COMBAT_MAX_SPEED_KMH;
+  const maxSpeedMs = Math.min(config.stats.maxSpeed, speedCapKmh) / 3.6;
   const accel = config.stats.acceleration / 100;
   const handling = config.stats.handling / 100;
   const tuning = kind === 'helicopter' ? HELI_TUNING : kind === 'jet' ? JET_TUNING : PLANE_TUNING;
@@ -181,6 +183,14 @@ export function createAircraftPhysics(config: VehicleConfig) {
       vz = 0;
       speed = 0;
       rotorSpeed = 0;
+    },
+
+    applyCorridorBoundary(nx: number, ny: number, nz: number, hitMin: boolean, hitMax: boolean) {
+      x = nx;
+      y = ny;
+      z = nz;
+      if (hitMin && vx > 0) vx = 0;
+      if (hitMax && vx < 0) vx = 0;
     },
 
     getState(): AircraftState {

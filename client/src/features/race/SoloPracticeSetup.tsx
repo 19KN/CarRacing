@@ -58,7 +58,7 @@ export function SoloPracticeSetup() {
             <p className="text-sm text-gray-400 mb-4">Choose your map and vehicle, then hit the road</p>
             {isAerialMap && (
               <p className="text-xs text-indiaGreen mb-3">
-                Aerial mode — Helicopter spawns on helipad (H), airplane on runway. Fly to the sky finish line. Press F to fire missiles in multiplayer.
+                Aerial combat mode — Max speed 90 km/h. Stay in the sky corridor, cross the finish arch in the air (flying below it does not count). Hold F to fire missiles in multiplayer.
               </p>
             )}
             {isGhatMap && (

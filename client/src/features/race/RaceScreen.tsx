@@ -7,7 +7,7 @@ import { lazy, Suspense } from 'react';
 import { LoadingSpinner } from '../../components/ui';
 
 const GameScene = lazy(() => import('../../game/core/GameScene').then((m) => ({ default: m.GameScene })));
-import { getMapById, DEFAULT_MAP_ID, getMapRaceDistance, getRaceSpawnPosition, getAerialSpawnPosition, getGhatSpawnPosition, getVehicleById, PlayerFinishedPayload, DEFAULT_TRAFFIC_LEVEL, isTrafficLevel, GHAT_COMBAT_MAX_SPEED_KMH, GHAT_COMBAT_START_RULES } from '@indian-racing/shared';
+import { getMapById, DEFAULT_MAP_ID, getMapRaceDistance, getRaceSpawnPosition, getAerialSpawnPosition, getGhatSpawnPosition, getVehicleById, PlayerFinishedPayload, DEFAULT_TRAFFIC_LEVEL, isTrafficLevel, GHAT_COMBAT_MAX_SPEED_KMH, AERIAL_COMBAT_MAX_SPEED_KMH, GHAT_COMBAT_START_RULES, AERIAL_COMBAT_START_RULES } from '@indian-racing/shared';
 import { getSocket, SocketEvents } from '../../utils/socket';
 import { formatDistance, formatTime } from '../../utils/progression';
 import { buildSoloRaceResult } from '../../utils/soloRace';
@@ -60,7 +60,17 @@ export function RaceHUD() {
   const isMultiplayer = (race?.players.length ?? lobby?.players.length ?? 1) >= 2;
   const isSolo = !isMultiplayer;
   const [elapsedMs, setElapsedMs] = useState(0);
-  const [showGhatStartInfo, setShowGhatStartInfo] = useState(false);
+  const [showCombatStartInfo, setShowCombatStartInfo] = useState(false);
+  const combatStartRules = isGhatMap
+    ? GHAT_COMBAT_START_RULES
+    : isAerialMap
+      ? AERIAL_COMBAT_START_RULES
+      : undefined;
+  const combatMaxSpeed = isGhatMap
+    ? GHAT_COMBAT_MAX_SPEED_KMH
+    : isAerialMap
+      ? AERIAL_COMBAT_MAX_SPEED_KMH
+      : 300;
   const { playCelebration } = useAudioManager();
 
   const handleCelebrationComplete = useCallback(() => {
@@ -80,14 +90,14 @@ export function RaceHUD() {
   }, [map]);
 
   useEffect(() => {
-    if (!isGhatMap || !isSolo || countdown !== null) {
-      setShowGhatStartInfo(false);
+    if (!combatStartRules || !isSolo || countdown !== null) {
+      setShowCombatStartInfo(false);
       return;
     }
-    setShowGhatStartInfo(true);
-    const timer = window.setTimeout(() => setShowGhatStartInfo(false), 5000);
+    setShowCombatStartInfo(true);
+    const timer = window.setTimeout(() => setShowCombatStartInfo(false), 5000);
     return () => window.clearTimeout(timer);
-  }, [isGhatMap, isSolo, countdown, mapId]);
+  }, [combatStartRules, isSolo, countdown, mapId, isGhatMap, isAerialMap]);
 
   useEffect(() => {
     if (countdown !== null) {
@@ -150,11 +160,11 @@ export function RaceHUD() {
       {countdown !== null && isMultiplayer && (
         <RaceCountdownOverlay
           value={countdown}
-          rules={isGhatMap ? GHAT_COMBAT_START_RULES : undefined}
+          rules={combatStartRules}
         />
       )}
-      {showGhatStartInfo && isSolo && isGhatMap && (
-        <StartLineInfoOverlay rules={GHAT_COMBAT_START_RULES} />
+      {showCombatStartInfo && isSolo && combatStartRules && (
+        <StartLineInfoOverlay rules={combatStartRules} />
       )}
 
       {/* HUD Overlay */}
@@ -172,7 +182,7 @@ export function RaceHUD() {
             <div className="text-xs text-gray-500 capitalize">{race?.weather} · {race?.timeOfDay}</div>
           </div>
           <div className="hud-panel">
-            <Speedometer speed={speed} maxSpeed={isGhatMap ? GHAT_COMBAT_MAX_SPEED_KMH : 300} />
+            <Speedometer speed={speed} maxSpeed={combatMaxSpeed} />
           </div>
         </div>
 

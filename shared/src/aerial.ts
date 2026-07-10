@@ -1,5 +1,6 @@
 import type { AircraftKind, Vector3 } from './types';
 import type { SpawnPosition } from './spawnPositions';
+import { buildSplinePathSamples, sampleSplineByZ } from './ghatSpline';
 
 /** Forest airfield layout for Chennai → Bangalore aerial map. */
 export const AERIAL_HELIPAD = { x: -38, y: 2.2, z: 18 };
@@ -12,6 +13,20 @@ export const AERIAL_COMBAT_MAX_ALTITUDE = 60;
 export const AERIAL_COMBAT_ALT_SOFT = 48;
 export const AERIAL_FINISH_Z = -3950;
 export const AERIAL_RACE_DISTANCE = 4000;
+/** Combat speed cap — same as ghat mode for missile fights. */
+export const AERIAL_COMBAT_MAX_SPEED_KMH = 90;
+/** Lateral half-width of the aerial race corridor (stay on the sky route). */
+export const AERIAL_CORRIDOR_HALF_WIDTH = 55;
+/** Minimum altitude to count as crossing the sky finish arch. */
+export const AERIAL_FINISH_CROSS_MIN_Y = AERIAL_FINISH_ALTITUDE - 10;
+export const AERIAL_FINISH_ARCH_HALF_WIDTH = 48;
+export const AERIAL_COMBAT_START_RULES = [
+  'Aerial combat mode',
+  `Max speed ${AERIAL_COMBAT_MAX_SPEED_KMH} km/h for all aircraft`,
+  'Stay inside the sky corridor — fly forward to the finish arch',
+  'Hold F to fire missiles at friends',
+  'Cross the sky finish line — flying below it does not count',
+] as const;
 
 export function isAircraftVehicle(vehicleId: string, category?: string): boolean {
   return category === 'aircraft' || vehicleId === 'helicopter' || vehicleId === 'airplane' || vehicleId === 'fighter_jet';
@@ -81,7 +96,57 @@ export function getAerialDistanceRemaining(z: number): number {
 }
 
 export function hasCrossedAerialFinish(x: number, y: number, z: number): boolean {
-  return z <= AERIAL_FINISH_Z + 40 && y >= 8 && Math.abs(x) < 180;
+  const finish = getAerialFinishPosition();
+  if (z > finish.z) return false;
+  if (y < AERIAL_FINISH_CROSS_MIN_Y) return false;
+  if (Math.abs(x - finish.x) > AERIAL_FINISH_ARCH_HALF_WIDTH) return false;
+  return true;
+}
+
+const aerialSplineCache = new WeakMap<object, ReturnType<typeof buildSplinePathSamples>>();
+
+function getAerialSpline(points: Vector3[]) {
+  let spline = aerialSplineCache.get(points);
+  if (!spline) {
+    spline = buildSplinePathSamples(points, 12);
+    aerialSplineCache.set(points, spline);
+  }
+  return spline;
+}
+
+/** Center of the aerial corridor at world Z. */
+export function sampleAerialCorridor(checkpoints: Vector3[], z: number) {
+  return sampleSplineByZ(getAerialSpline(checkpoints), z);
+}
+
+/** Keep aircraft inside the sky route (like lane limits on a road). */
+export function clampAerialToCorridor(
+  checkpoints: Vector3[],
+  x: number,
+  z: number,
+): {
+  x: number;
+  centerX: number;
+  hitMin: boolean;
+  hitMax: boolean;
+} {
+  const sample = sampleAerialCorridor(checkpoints, z);
+  const centerX = sample.x;
+  const minX = centerX - AERIAL_CORRIDOR_HALF_WIDTH;
+  const maxX = centerX + AERIAL_CORRIDOR_HALF_WIDTH;
+
+  let clampedX = x;
+  let hitMin = false;
+  let hitMax = false;
+  if (x < minX) {
+    clampedX = minX;
+    hitMin = true;
+  } else if (x > maxX) {
+    clampedX = maxX;
+    hitMax = true;
+  }
+
+  return { x: clampedX, centerX, hitMin, hitMax };
 }
 
 export const MISSILE_DAMAGE = 28;
