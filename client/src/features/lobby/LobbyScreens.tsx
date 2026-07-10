@@ -26,6 +26,12 @@ export function CreateLobby() {
   const setLobby = useLobbyStore((s) => s.setLobby);
   const setGamingId = useLobbyStore((s) => s.setGamingId);
   const navigate = useNavigate();
+  const { playLobbyMusic, stopLobbyMusic } = useAudioManager();
+
+  useEffect(() => {
+    playLobbyMusic();
+    return () => stopLobbyMusic();
+  }, [playLobbyMusic, stopLobbyMusic]);
 
   const selectedMap = MAPS.find((m) => m.id === mapId);
 
@@ -156,6 +162,12 @@ export function JoinLobby() {
   const setLobby = useLobbyStore((s) => s.setLobby);
   const setGamingId = useLobbyStore((s) => s.setGamingId);
   const navigate = useNavigate();
+  const { playLobbyMusic, stopLobbyMusic } = useAudioManager();
+
+  useEffect(() => {
+    playLobbyMusic();
+    return () => stopLobbyMusic();
+  }, [playLobbyMusic, stopLobbyMusic]);
 
   const handleJoin = async () => {
     if (!gamingId.trim()) { setError('Enter your friend\'s Lobby ID'); return; }
